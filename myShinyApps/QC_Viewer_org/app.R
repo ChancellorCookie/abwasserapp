@@ -2,6 +2,11 @@
 #____________________ QC VIEWER _____________________#
 #____________________________________________________#
 
+# Crash-Logging
+crash_log <- file.path(getwd(), "crash.log")
+sink(file = crash_log, split = FALSE, append = TRUE)
+msg_con <- file(crash_log, open = "a")
+sink(msg_con, type = "message")
 
 # Load User-Defined Functions ----
 # ______________________________________________
@@ -10,6 +15,9 @@
 # In Docker: both apps are at same level under /srv/shiny-server/myShinyApps/
 R_Viewer_Path <- file.path(dirname(getwd()), "R_Viewer")
 if (!dir.exists(R_Viewer_Path)) R_Viewer_Path <- getwd()
+setwd(R_Viewer_Path)
+cat("QC_Viewer: setwd to", getwd(), "\n")
+cat("Config exists:", file.exists(file.path(getwd(), "Config", "defaults.csv")), "\n")
 
 path.root <- normalizePath(R_Viewer_Path)
 path.QC <- normalizePath(file.path(path.root,"QC"))
@@ -134,6 +142,7 @@ ui <- fluidPage(
 
 ### server ----
 server = function(input, output,session) {
+  setwd(R_Viewer_Path)
   
   
   
@@ -257,6 +266,7 @@ server = function(input, output,session) {
   
   # Read-Out of defaults.csv triggert by vailed credentials ----
   observeEvent(vals$AdminRights,{
+    setwd(R_Viewer_Path)
     dfs$defaults <- read.defaults()
   })
   
@@ -902,6 +912,7 @@ server = function(input, output,session) {
     write(x = paste(vals$Operator,date(),"Save",sep = ","),file = "defaults.log",append = TRUE)
     
     # Trigger for reload of input elements
+    setwd(R_Viewer_Path)
     dfs$defaults <- read.defaults()
     output$verb.Defaults.Info <- renderText({"Successfully stored!"})
     vals$defaults.backup.files <- get.defaults.Backups()

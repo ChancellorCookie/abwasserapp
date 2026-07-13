@@ -3,7 +3,14 @@
 # QC Pfade werden anhand der SAA Nummer automatisch ausgelesen
 #
 # Startup (Pfade, Packages, Functions, Globals) jetzt in global.R
-# NOTE: global.R is not reliably loaded by Shiny Server, so everything is inlined here
+# NOTE: global.R is not reliably loaded by Shiny Server, so everything is inlined here
+
+# Crash-Logging: capture all output to a dedicated log file
+crash_log <- file.path(getwd(), "crash.log")
+sink(file = crash_log, split = FALSE, append = TRUE)
+# redirect stderr using connection
+msg_con <- file(crash_log, open = "a")
+sink(msg_con, type = "message")
 
 # Directory Structure ----
 path.root <- normalizePath(getwd())
