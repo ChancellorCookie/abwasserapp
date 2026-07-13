@@ -2,6 +2,24 @@
 
 
 
+# Error handler helper ----
+showErrorModal <- function(title, msg) {
+  removeModal()
+  showModal(modalDialog(
+    title = title,
+    tags$pre(style = "white-space: pre-wrap; max-height: 400px; overflow-y: auto;", msg),
+    easyClose = TRUE,
+    footer = modalButton("OK")
+  ))
+}
+
+safeObserve <- function(title, expr) {
+  tryCatch(expr, error = function(e) {
+    showErrorModal(title, paste0("Error: ", e$message, "\n\nCall:\n", paste(deparse(e$call), collapse = "\n")))
+    NULL
+  })
+}
+
 # Reactive value definitions
 
   vals <- reactiveValues(reload_adminDF = 0,
@@ -295,6 +313,8 @@
     # Block Inputs and show a message while waiting for processing
 
     showModal(modalDialog("Loading and evaluating...Please wait!", footer=NULL))
+
+    tryCatch({
 
     
 
@@ -661,8 +681,13 @@
 
     dfs$Solids.definition <- lists$myList$Solids
 
-    
+
     removeModal()
+
+    }, error = function(e) {
+      showErrorModal("Error during file processing", e$message)
+      return(NULL)
+    })
 
   })
 
@@ -1172,6 +1197,7 @@
   # Download Buttons XLSX ----
 
   observe({
+    tryCatch({
 
     # req(lists$myList)
 
@@ -3054,9 +3080,13 @@ output$tab.Administration <- renderUI({
 
     )
 
-  )
+    )
 
-})
+    }, error = function(e) {
+      showErrorModal("Error generating download", e$message)
+    })
+
+  })
 
 
 

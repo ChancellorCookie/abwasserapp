@@ -8,7 +8,7 @@ FROM rocker/shiny:4.3
 LABEL maintainer="ZE1 Abwasserapp"
 LABEL description="ZE1 Report Generator - Abwasseranalytik"
 
-# System-Abhängigkeiten (LaTeX für PDF-Reports, system libs für R-Pakete)
+# System-Abhängigkeiten (LaTeX für PDF-Reports, system libs für R-Pakete, Java für xlsx/rJava)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     texlive-latex-base \
     texlive-latex-extra \
@@ -19,6 +19,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libcurl4-openssl-dev \
     libmariadb-dev \
+    default-jdk \
+    && R CMD javareconf \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
