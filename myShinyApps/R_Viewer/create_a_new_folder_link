@@ -1,0 +1,7 @@
+Delete exisitng folder!
+
+paste in terminal shortcut: shif+crtl+v
+
+sudo mkdir -p "Umweltanalytik & Toxikologie"
+
+sudo mount -t cifs "//10.1.2.210/Umweltanalytik & Toxikologie" "Umweltanalytik & Toxikologie" -o username=xxx,password=xxx

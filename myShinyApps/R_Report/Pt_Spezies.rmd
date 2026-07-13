@@ -1,0 +1,463 @@
+---
+title: "Pt-Spezies (SAA 7.3.2)"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{multicol}
+output: 
+  pdf_document:
+
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+params:
+  Operator: NA
+  BGMethod: NA
+  BG.SAA: NA
+  inFile: NA
+  PipettenList: NA
+  QCSoll.Cis: NA
+  QCSoll.Carbo: NA
+  QCSoll.Oxali: NA
+  Alpha: NA
+  Masse: NA
+  Significant.Digits: NA
+  PathRegelKarte.Cis.VBW: NA
+  PathRegelKarte.Carbo.VBW: NA
+  PathRegelKarte.Oxali.VBW: NA
+  PathRegelKarte.Cis.QC: NA
+  PathRegelKarte.Carbo.QC: NA
+  PathRegelKarte.Oxali.QC: NA
+  PathZielwert.Cis: NA
+  PathZielwert.Carbo: NA
+  PathZielwert.Oxali: NA
+  PathCalibration: NA
+--- 
+
+
+
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+
+``` 
+
+
+```{r Parameter Input aus Shiny, include=FALSE}
+# Übernahme der Parameter Liste aus Knitr
+
+# ACHTUNG: die Class "knit_param_list" lässt keine Änderung der übergebenen Paramter zu!
+myParams <- unclass(params)
+
+#Standard Einstellung für Aufruf außerhalb von Shiny
+if(myParams$Operator =="NA"){myParams$Operator<-"Dronov"}
+if(myParams$BGMethod =="NA"){myParams$BGMethod<-"SN"} #   "DIN32645"  "Kaiser"
+if(myParams$PipettenList =="NA"){myParams$PipettenList <- c(1067,1097,1099)}
+if(myParams$BG.SAA == "NA"){myParams$BG.SAA <-T}
+
+if(myParams$QCSoll.Cis =="NA"){myParams$QCSoll.Cis <- 5}    else  {as.numeric(myParams$QCSoll.Cis)}
+if(myParams$QCSoll.Carbo =="NA"){myParams$QCSoll.Carbo <- 5}  else  {as.numeric(myParams$QCSoll.Carbo)}
+if(myParams$QCSoll.Oxali =="NA"){myParams$QCSoll.Oxali <- 5}  else  {as.numeric(myParams$QCSoll.Oxali)}
+
+if(myParams$Alpha == "NA"){myParams$Alpha <- 0.01}else{as.numeric(myParams$Alpha)}
+if(myParams$Masse == "NA"){myParams$Masse <- "195"}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <- 2}else{as.numeric(myParams$Significant.Digits)}
+
+if(myParams$PathRegelKarte.Cis.VBW =="NA"){myParams$PathRegelKarte.Cis.VBW <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_CisPt_VBW.csv"),winslash = "\\")}
+if(myParams$PathRegelKarte.Carbo.VBW =="NA"){myParams$PathRegelKarte.Carbo.VBW <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_CarboPt_VBW.csv"),winslash = "\\")}
+if(myParams$PathRegelKarte.Oxali.VBW =="NA"){myParams$PathRegelKarte.Oxali.VBW <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_OxaliPt_VBW.csv"),winslash = "\\")}
+
+if(myParams$PathRegelKarte.Cis.QC =="NA"){myParams$PathRegelKarte.Cis.QC <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_CisPt_QC.csv"),winslash = "\\")}
+if(myParams$PathRegelKarte.Carbo.QC =="NA"){myParams$PathRegelKarte.Carbo.QC <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_CarboPt_QC.csv"),winslash = "\\")}
+if(myParams$PathRegelKarte.Oxali.QC =="NA"){myParams$PathRegelKarte.Oxali.QC <- normalizePath(paste0(path.QCtoWrite,"/SAA_7.3.2_OxaliPt_QC.csv"),winslash = "\\")}
+
+if(myParams$PathZielwert.Cis =="NA"){myParams$PathZielwert.Cis <- normalizePath(paste0(path.TargetValues,"/SAA_7.3.2_CisPt_Zielwert.csv"),winslash = "\\")}
+if(myParams$PathZielwert.Carbo =="NA"){myParams$PathZielwert.Carbo <- normalizePath(paste0(path.TargetValues,"/SAA_7.3.2_CarboPt_Zielwert.csv"),winslash = "\\")}
+if(myParams$PathZielwert.Oxali =="NA"){myParams$PathZielwert.Oxali <- normalizePath(paste0(path.TargetValues,"/SAA_7.3.2_OxaliPt_Zielwert.csv"),winslash = "\\")}
+
+if(myParams$PathCalibration == "NA"){myParams$PathCalibration <- normalizePath(paste0(path.Calibration,"/SAA_7.3.2_Calibration.csv"),winslash = "\\")}
+
+
+## Öffnet das Dialogfenster zum Auslesen des vollständigen Dateinamen, der Messdaten
+if(myParams$inFile =="NA"){myParams$inFile <- tk_choose.files(filters = matrix( c("CSV Dateien","*.csv","Alle Dateien","*.*"),
+                                                                             nrow = 2,
+                                                                             ncol = 2,
+                                                                             byrow = T,
+                                                                             dimnames = list(c("csv","All"),c("",""))))}
+
+
+## Auslesen der Zielwert-Daten
+myParams$Zielwerte[["Cis-Platin"]] <-read.csv(myParams$PathZielwert.Cis,
+                                              header = T,
+                                              stringsAsFactors = F)
+
+myParams$Zielwerte[["Carbo-Platin"]] <-read.csv(myParams$PathZielwert.Carbo,
+                                                header = T,
+                                                stringsAsFactors = F)
+
+myParams$Zielwerte[["Oxali-Platin"]] <-read.csv(myParams$PathZielwert.Oxali,
+                                                header = T,
+                                                stringsAsFactors = F)
+
+## Auslesen der Calibrations-Daten
+myParams$Calibration.Definition <-read.csv(myParams$PathCalibration,
+                                               header = T,
+                                               stringsAsFactors = F)
+
+names(myParams$Calibration.Definition) <- c("Index","Cis-Platin","Carbo-Platin","Oxali-Platin")
+```
+
+```{r Ausführung des Datenimports, echo=TRUE, include=FALSE }
+myPreList <- suppressWarnings(readCSV_iCAPQ_short(myParams$inFile))
+```
+
+```{r Restrukturierung der Liste, echo=TRUE, include=FALSE }
+myList <- iCapQ_tQuant(myPreList,myParams)
+```
+
+```{r Gather Chromatogramm, include=FALSE}
+myList$tQuant$Chromatography$Chromatogramm[["SortedChromatogramm"]] <- iCapQ_tQuant_Gather(myList)
+```
+
+```{r Evaluation Quantification, include=FALSE}
+myList <- my.tQuant.Concentration.Evaluation(myList)
+```
+
+```{r Plot Chromatogramm, include=FALSE}
+if(length(myList$tQuant$Chromatography$Chromatogramm$SortedChromatogramm) != 0){
+  myList$tQuant$Chromatography[["Chromatogram.Plots"]] <- my.tQuant.Chromatogramm.Plot(myList)
+}
+```
+
+
+```{r Qualitätskontrolle, include=FALSE}  
+#### In dieser Funktion werden die QC Proben ausgewertet und die Regelkarten geführt
+myList[["QC"]] <- myQC.SAA732(myList)
+```
+
+
+```{r Sicherungen, eval=FALSE, include=FALSE}
+############################################
+# SICHERUNG der Daten
+############################################
+```
+
+```{r Speichern der Liste, include=FALSE}
+save.myList(myList)
+```
+
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+myXLSX.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myXLSX.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = ".csv",n=2)[1],"_rEval.xlsx")
+dirsave.myList.xlsx <- paste0(myXLSX.path,myXLSX.file)
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "Header"= myList$Header,
+                  "Final.Conc" = myList$tQuant$Evaluation$Conc.Final,
+                  "RawData"= "Zu viel für Excel",
+                  "PeakStart" =myList$tQuant$Chromatography$PeakStart$Data,
+                  "PeakEnd" = myList$tQuant$Chromatography$PeakEnd$Data,
+                  "Retention" = myList$tQuant$Chromatography$Retention$Data,
+                  "PeakHeight" = myList$tQuant$Chromatography$PeakHeight$Data,
+                  "PeakArea" = myList$tQuant$Chromatography$PeakArea$Data,
+                  "Chromatogram" = myList$tQuant$Chromatography$Chromatogramm$SortedChromatogramm,
+                  "Analyt.Info" =  rbind(myList$tQuant$Calibration$Info$Analytes,myList$tQuant$Calibration$Info$Units),
+                  "Std.Concentration" = myList$tQuant$Calibration$Std.Concentration,
+                  "NG.calc" =  myOLS_BG(myList$tQuant$Calibration$OLS,Parameter = "xNG"),
+                  "BG.calc" =  myOLS_BG(myList$tQuant$Calibration$OLS,Parameter = "xBG"),
+                  "Raw.Conc" = myList$tQuant$Evaluation$Concentration,
+                  "BG.Conc" = myList$tQuant$Evaluation$Conc.less.BG,
+                  "VF.Conc" = myList$tQuant$Evaluation$Conc.multiply.VF)
+
+
+ suppressWarnings(myXLSX.write(writeData,dirsave.myList.xlsx,Override = F))
+```
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=FALSE}
+
+Analyte_Abbr <- paste0(myList$tQuant$Calibration$Info$Analytes," (",myList$tQuant$Calibration$Info$Units,")")
+
+conc_clean <- myList$tQuant$Evaluation$Conc.Final %>% filter(str_detect(Labels,"^M")) %>% select(-Index) %>% `names<-`(.,c("Labels",unique(Analyte_Abbr)))
+conc_clean <- conc_clean[order(conc_clean$Labels),] # AlphaNumerisch Sortiert!
+kable(conc_clean, "latex", longtable = T,booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+Bestimmungsgrenze (BG) nach `r myList$Input.Parameter$BGMethod`:
+
+`r myList$tQuant$Calibration$Info$Analytes[1]` `r signif(myList$tQuant$Evaluation$BG.Report[[myList$tQuant$Calibration$Info$Analytes[1]]],2)` `r myList$tQuant$Calibration$Info$Units[1]`
+
+`r myList$tQuant$Calibration$Info$Analytes[2]` `r signif(myList$tQuant$Evaluation$BG.Report[[myList$tQuant$Calibration$Info$Analytes[2]]],2)` `r myList$tQuant$Calibration$Info$Units[2]`
+
+`r myList$tQuant$Calibration$Info$Analytes[3]` `r signif(myList$tQuant$Evaluation$BG.Report[[myList$tQuant$Calibration$Info$Analytes[3]]],2)` `r myList$tQuant$Calibration$Info$Units[3]`
+
+
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+
+\newpage
+# Header
+
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+\addlinespace
+Operator & `r myList$Input.Parameter$Operator` \\
+Datum & `r format(Sys.time(), format = "%d.%m.%Y")` \\
+\addlinespace
+Messdatei & \verb!`r myList$Input.Parameter$FileName`! \\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList` \\
+\addlinespace
+BG Methode & `r myList$Input.Parameter$BGMethod` \\
+BG aus SAA? & `r myList$Input.Parameter$BG.SAA` \\
+$\alpha$ & `r myList$Input.Parameter$Alpha` \\
+\addlinespace
+Bericht Masse & `r myList$Input.Parameter$Mass` \\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits` \\
+\hline
+\end{tabular}
+
+\vspace{1cm}
+
+\begin{tabular}{llll}
+\hline
+QC-Parameter      &
+`r myList$tQuant$Calibration$Info$Analytes[1]`  &
+`r myList$tQuant$Calibration$Info$Analytes[2]`  &
+`r myList$tQuant$Calibration$Info$Analytes[3]` \\
+\hline
+\addlinespace
+c(Soll) (µg/L) &
+`r myList$Input.Parameter$QCSoll.Cis`   &
+`r myList$Input.Parameter$QCSoll.Carbo` &
+`r myList$Input.Parameter$QCSoll.Oxali` \\
+
+Zielwert (\%) &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[1]][["Zielwert"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[2]][["Zielwert"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[3]][["Zielwert"]]` \\
+
+Unsicherheit (\%) &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[1]][["Unsicherheit"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[2]][["Unsicherheit"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[3]][["Unsicherheit"]]` \\
+
+Notwendige BG (µg/L) &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[1]][["LimitBG"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[2]][["LimitBG"]]` &
+`r myList[["Input.Parameter"]][["Zielwerte"]][[3]][["LimitBG"]]` \\
+\hline
+\end{tabular}
+
+\newpage
+
+# Intensitäten (CTS)
+```{r Ausgabe der Roh Daten, echo=FALSE}
+kable(myList$tQuant$Chromatography$PeakArea$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+# Konzentrationen (ungefiltert)
+```{r Ausgabe der KOnzentrationen, echo=FALSE}
+kable(myList$tQuant$Evaluation$Concentration %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+# Verwendete Kalibrationspunkte 1-x
+```{r Verwendete Kalibrationspunkte, echo=FALSE}
+kable(myList$tQuant$Evaluation$UsedStandards %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Filter von:   c < BG  <=>  c = 0 
+```{r echo=FALSE}
+kable(myList$tQuant$Evaluation$Conc.less.BG %>% select(-Index), "latex", longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+\newpage
+
+## Einberechnung der Verdünnungsfaktoren 
+```{r echo=FALSE}
+kable(myList$tQuant$Evaluation$Conc.multiply.VF %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Konzentrationen in
+```{r echo=FALSE}
+kable(myList$tQuant$Evaluation$Conc.Final %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+
+\newpage
+
+## Bewertung der Kalibration `r myList$Input.Parameter$BGMethod`
+```{r echo=FALSE}
+Calibration.Parameter <- c("Methode","b0","b1","sb0","sb1","R","m","n","Alpha","ta","xNG","xEG","xBG")
+Calibration.Summary <- myOLS_BG(myList$tQuant$Calibration$OLS,Parameter = "Methode")
+for (p in Calibration.Parameter[-1]) {
+  Calibration.Summary <- rbind(Calibration.Summary,signif(as.numeric(myOLS_BG(myList$tQuant$Calibration$OLS,Parameter = p)),4),deparse.level=1)
+}
+row.names(Calibration.Summary) <- Calibration.Parameter
+
+kable(Calibration.Summary, "latex", longtable = T, booktabs = T, row.names = T) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+```{r echo=FALSE}
+
+for (v in myList$tQuant$Calibration$Info$Analytes) {
+  subList <- myList$tQuant$Calibration$OLS[[v]]
+  
+  print(myList$tQuant$Calibration$Cali.Plots[[v]])
+  print(subList$Plot_fit)
+  print(subList$Plot_res)
+  cat("\\newpage")
+}
+
+
+```
+\newpage
+
+
+# Chromatogramme
+```{r echo=FALSE}
+for (w in myList$Header$Labels) {
+  print(myList$tQuant$Chromatography$Chromatogram.Plots[[w]])
+}
+```
+
+
+\newpage
+
+# Regelkarten
+
+
+## Blindwertkarte
+### Cis-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$VBW.Cis, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$VBW.Cis)
+```
+\newpage
+
+### Carbo-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$VBW.Carbo, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$VBW.Carbo)
+```
+\newpage
+
+### Oxali-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$VBW.Oxali, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$VBW.Oxali)
+```
+\newpage
+
+## Zielwertkarte SAA 7.3.2(MM3)
+### Cis-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$QC.Cis, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$QC.Cis)
+```
+\newpage
+
+### Carbo-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$QC.Carbo, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$QC.Carbo)
+```
+\newpage
+
+### Oxali-Platin
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$QC.Oxali, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+print(myList$QC$Control.Chart.Plots$QC.Oxali)
+```
+
+

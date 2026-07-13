@@ -1,0 +1,15 @@
+﻿﻿,,Chromatography.Concentration,Chromatography.Concentration,Chromatography.Concentration,Chromatography.PeakStart,Chromatography.PeakStart,Chromatography.PeakStart,Chromatography.PeakEnd,Chromatography.PeakEnd,Chromatography.PeakEnd,Chromatography.Retention,Chromatography.Retention,Chromatography.Retention,Chromatography.PeakHeight,Chromatography.PeakHeight,Chromatography.PeakHeight,Chromatography.PeakArea,Chromatography.PeakArea,Chromatography.PeakArea,StartTime,BrigidMS,BrigidMS,BrigidMS
+,,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,,Chromatography,Chromatography,Chromatography
+,,Cis-Platin,Carbo-Platin,Oxali-Platin,Cis-Platin,Carbo-Platin,Oxali-Platin,Cis-Platin,Carbo-Platin,Oxali-Platin,Cis-Platin,Carbo-Platin,Oxali-Platin,Cis-Platin,Carbo-Platin,Oxali-Platin,Cis-Platin,Carbo-Platin,Oxali-Platin,,Sample Type,Standard,Dilution Factor
+,,Y (µg/l),Y (µg/l),Y (µg/l),Y (s),Y (s),Y (s),Y (s),Y (s),Y (s),Y (s),Y (s),Y (s),Y (cps),Y (cps),Y (cps),Y (cts),Y (cts),Y (cts),,,,
+1,Std1,0,0,0,80,120,195,102,140,240,90,130,210,3060,3060,3060,3060,3060,3060,2018-11-15T10:02:20.3821898,STD,DIN32645_1,1
+2,Std2,0,0,0,80,120,195,102,140,240,90,130,210,3522,3522,3522,3522,3522,3522,2018-11-15T10:12:39.6564775,STD,DIN32645_2,1
+3,Std3,0,0,0,80,120,195,102,140,240,90,130,210,3707,3707,3707,3707,3707,3707,2018-11-15T10:23:08.6963824,STD,DIN32645_3,1
+4,Std4,0,0,0,80,120,195,102,140,240,90,130,210,4280,4280,4280,4280,4280,4280,2018-11-15T10:33:38.4538885,STD,DIN32645_4,1
+5,Std5,0,0,0,80,120,195,102,140,240,90,130,210,5058,5058,5058,5058,5058,5058,2018-11-15T10:44:08.414195,STD,DIN32645_5,1
+6,Std6,0,0,0,80,120,195,102,140,240,90,130,210,5510,5510,5510,5510,5510,5510,2018-11-15T10:54:39.279303,STD,DIN32645_6,1
+7,Std7,0,0,0,80,120,195,102,140,240,90,130,210,5703,5703,5703,5703,5703,5703,2018-11-15T11:05:09.1312098,STD,DIN32645_7,1
+8,Std8,0,0,0,80,120,195,102,140,240,90,130,210,6205,6205,6205,6205,6205,6205,2018-11-15T11:15:39.351718,STD,DIN32645_8,1
+9,Std9,0,0,0,80,120,195,102,140,240,90,130,210,7156,7156,7156,7156,7156,7156,2018-11-15T11:26:08.7036234,STD,DIN32645_9,1
+10,Std10,0,0,0,80,120,195,102,140,240,90,130,210,7178,7178,7178,7178,7178,7178,2018-11-15T11:36:38.9915304,STD,DIN32645_10,1
+11,Smpl,0,0,0,80,120,195,102,140,240,90,130,210,7000,7000,7000,7000,7000,7000,2018-11-15T11:47:09.291438,UNKNOWN,,1

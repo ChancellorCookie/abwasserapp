@@ -1,0 +1,17 @@
+LIMS export of <Calib_2018.d80>
+Version 03-CDate 2018-12-05-12-35-14
+
+Nr;Pos;SampleName;CreationDate;ProcessTime;Amount;Unit;ConcentrateAmount;Unit;Type;State;CalFile;MethodFile;Height;Cell;Hg [ng];Concentration;Unit;DilutionWeight;FinalVolume;CalFactor;DilutionFactor;Statistics;Group;Remark;
+
+7;1;0 ng;2018-11-29-09-34-56;2018-11-29-09-35-58;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0001;0;0,0000;0,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+8;3;0.1 ng;2018-11-29-09-42-57;2018-11-29-09-43-30;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0122;0;0,1000;1,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+9;1;0.2 ng;2018-11-29-09-50-57;2018-11-29-09-51-19;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0250;0;0,2000;2,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+10;3;0.2 ng;2018-11-29-09-58-34;2018-11-29-09-58-46;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0263;0;0,2000;2,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+11;1;0.3 ng;2018-11-29-10-06-13;2018-11-29-10-06-29;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0402;0;0,3000;3,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+12;3;0.4 ng;2018-11-29-10-13-40;2018-11-29-10-14-04;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0510;0;0,4000;4,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+13;1;0.5 ng;2018-11-29-10-21-20;2018-11-29-10-21-34;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,0643;0;0,5000;5,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+14;1;1 ng;2018-11-29-11-20-03;2018-11-29-11-21-28;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,1306;0;1,0000;10,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+16;1;2 ng;2018-11-29-11-36-12;2018-11-29-11-36-32;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,2611;0;2,0000;20,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+17;3;3 ng;2018-11-29-11-43-49;2018-11-29-11-44-03;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,3814;0;3,0000;30,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+18;1;4 ng;2018-11-29-11-51-16;2018-11-29-11-51-30;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,4864;0;4,0000;40,0000;µg/L;0,0000;0,0000;1,0000;;;;;
+19;3;5 ng;2018-11-29-11-58-44;2018-11-29-11-59-01;0,10000;mL;0,10000;mL;calibrate;finished;<geänderte Daten>;Flüssig.m80;0,5797;0;5,0000;50,0000;µg/L;0,0000;0,0000;1,0000;;;;;

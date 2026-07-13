@@ -1,0 +1,677 @@
+---
+title: "Pt-Spezies (SAA 2.3.2)"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{multicol}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+output: 
+  pdf_document:
+    fig_caption: yes
+    fig_height: 3.5
+    fig_width: 8.5
+params:
+  myList: NA
+--- 
+
+
+
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+myList <- params$myList
+#load("/srv/shiny-server/myShinyApps/R_Viewer_beta/myList_tQuant_Pt.RData")
+#load("~/Schreibtisch/R_Viewer/myList_tQuant_Pt_CommentReport.RData")
+#load("myList.RData")
+myList$Input.Parameter$FilePath <- "\\\\10.1.8.210\\gc-ms-fid\\Analysen\\2018\\Berichte\\iCAPQ Messdaten\\Pt Spezies"
+ReportTime <- format(Sys.time(), format = "%d.%m.%Y")
+# Avoid scientific notation to prevent LaTex errors
+options(scipen = 999)
+``` 
+
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r ReportTime`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{Version 1.1}
+
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=FALSE,comment=NA}
+
+Analyte_Abbr <- paste0(myList$Calibration$Info$Analytes," (",myList$Calibration$Info$Units,")")
+
+conc_clean <- myList$Concentration$Conc.Final %>% filter(str_detect(Labels,"^M")) %>% select(-Index) %>% `names<-`(.,c("Labels",unique(Analyte_Abbr)))
+conc_clean <- conc_clean[order(conc_clean$Labels),] # AlphaNumerisch Sortiert!
+kable(conc_clean, "latex", longtable = T,booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+# Kommentare unter Berücksichtigung der mit Sternchen markierten Proben
+cat(c("Kommentare:",myList$Header$Comment[grep(pattern = "^\\*",x = myList$Header$Comment)]),sep = "\n")
+```
+
+
+Bestimmungsgrenze (BG) mittels \verb!`r myList[["Calibration"]][["OLS"]][[1]][["Methode"]]`!:
+
+`r names(myList$Concentration$BG.Report)[1]` `r myList$Concentration$BG.Report[[1]]` `r myList$Calibration$Info$Units[1]` 
+
+`r names(myList$Concentration$BG.Report)[2]` `r myList$Concentration$BG.Report[[2]]` `r myList$Calibration$Info$Units[2]` 
+
+`r names(myList$Concentration$BG.Report)[3]` `r myList$Concentration$BG.Report[[3]]` `r myList$Calibration$Info$Units[3]` 
+
+
+
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r ReportTime` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+
+\newpage
+
+# Begleitinformationen
+
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+\addlinespace
+Operator & `r myList$Input.Parameter$Operator` \\
+Datum & `r ReportTime` \\
+\addlinespace
+Messdatei & \verb!`r myList$Input.Parameter$FileName`! \\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList %>% pull()` \\
+\addlinespace
+BG Methode & `r myList$Input.Parameter$BGMethod` \\
+BG aus SAA? & `r myList$Input.Parameter$BG.SAA` \\
+$\alpha$ & `r myList$Input.Parameter$Alpha` \\
+\addlinespace
+Bericht Masse & `r myList$Input.Parameter$Mass` \\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits` \\
+\hline
+\end{tabular}
+
+\vspace{1cm}
+
+
+```{r Auslesen der QC Daten, include=FALSE}
+# Wenn bei diesem Messlauf kein "perform.QC" durchgeführt wurde, wurde auch keine myList[["QC"]] angelegt. Daher muss dies nachträglich geschehen, sonst funktionieren nachfolgende abrufe der gespeicherten Kontrollkarten nicht
+if (is.null(myList$QC)) {
+myList[["QC"]] <-myQC.Defaults.csv(results.list = myList.Converter(myList), # Converts the measurement results in a uniform list
+                                              df.defaults.QC = read.defaults() %>% # Extract QC default data
+                                                filter(SAA.Menue %in% myList$Input.Parameter$SAA.Selected) %>% # Info about stored QC-Values defined by QC-Method (e.g. "VBW", "MM2" and "MM3" from "SAA 2.3.1 Pt-Gesamt")
+                                                select(Analyt,Element,SAA,QC.Kind,QC.Name,QC.RegEx,Filename,Zielwert,Unsicherheit,LimitBG,Unit.Accept,Masse), # Needed Values
+                                              QCSoll = read.defaults() %>% filter(SAA.Menue %in% myList$Input.Parameter$SAA.Selected) %>% filter(QC.Kind %in% "QC") %>% select(QC.Name,SAA,QC.Norm,Unit.Norm),
+                                              NonDefaultAnalyt.vec = NULL,
+                                   path.QCtoWrite = path.QCtoWrite) # In the UI defined QCSoll values
+}
+```
+
+
+```{r Prüfung der Akzeptanzkriterien, include=FALSE}
+# Erstellen einer Prüfvariablen vom Typ LOGICAL. Die Werte sind gelabels nach dem QC.Name der default.csv zur besseren Zuordnung
+proof <- logical(length(names(myList[["QC"]])))
+names(proof) <- names(myList[["QC"]])
+for (i in 1:length(myList[["QC"]])) {
+  if (myList[["QC"]][[i]][["QC.defaults"]][["QC.Kind"]] == "VBW") { # Wenn Blindwert betrachtet wird, ist das Kriterium "VBW < LimitBG"
+    # Exception if no data is available
+    if (is.na(myList[["QC"]][[i]][["QC.Data"]])) { # Abbruchkriterium, wenn Standard nicht gemessen wurden und entsprechend keine Daten vorliegen
+      proof[names(myList[["QC"]][i])] <- NA
+      next
+    }
+    # Betrachtet wird die Concentration
+    Data <- as.numeric(myList[["QC"]][[i]][["QC.Data"]][["Concentration"]])
+    # Prüfwert
+    check1 <- myList[["QC"]][[i]][["QC.defaults"]]$LimitBG
+    # Abfrage und Setzen der proof Variablen auf TRUE wenn der Test bestanden ist
+    if (is.na(Data) | all(check1 > Data)) {
+      proof[names(myList[["QC"]][i])] <- TRUE
+    }
+   
+  } else if (myList[["QC"]][[i]][["QC.defaults"]][["QC.Kind"]] == "QC") { # Wenn Zielwert betrachtet wird, ist das Kriterium  "Zielwert-U < QC < Zielwert+U"
+    # Betrachtet wird die WFR
+    if (is.na(myList[["QC"]][[i]][["QC.Data"]])) { # Abbruchkriterium, wenn Standard nicht gemessen wurden und entsprechend keine Daten vorliegen
+      proof[names(myList[["QC"]][i])] <- NA
+      next
+    }
+    Data <- as.numeric(myList[["QC"]][[i]][["QC.Data"]][["WFR"]])
+    # Prüfwert
+    check1 <- myList[["QC"]][[i]][["QC.defaults"]]$Zielwert - myList[["QC"]][[i]][["QC.defaults"]]$Unsicherheit
+    check2 <- myList[["QC"]][[i]][["QC.defaults"]]$Zielwert + myList[["QC"]][[i]][["QC.defaults"]]$Unsicherheit
+    # Abfrage und Setzen der proof Variablen auf TRUE wenn der Test bestanden ist
+    if (all(check1 < Data) && all(Data < check2)) {
+      proof[names(myList[["QC"]][i])] <- TRUE
+    }
+  }
+  
+}
+
+
+```
+
+
+## Bewertung der Akzeptanzkriterien nach `r myList$Input.Parameter$SAA.Selected`
+\small
+\begin{tabular}{llll}
+\hline
+QC-Parameter & 
+\verb!`r myList[["QC"]][[1]][["QC.defaults"]]$QC.Name`! & 
+\verb!`r myList[["QC"]][[2]][["QC.defaults"]]$QC.Name`! & 
+\verb!`r myList[["QC"]][[3]][["QC.defaults"]]$QC.Name`! \\ 
+\hline 
+\addlinespace
+Art & 
+`r myList[["QC"]][[1]][["QC.defaults"]]$QC.Kind` &
+`r myList[["QC"]][[2]][["QC.defaults"]]$QC.Kind` &
+`r myList[["QC"]][[3]][["QC.defaults"]]$QC.Kind` \\ 
+\addlinespace
+Dateiname & 
+\verb!`r myList[["QC"]][[1]][["QC.defaults"]]$Filename`! &
+\verb!`r myList[["QC"]][[2]][["QC.defaults"]]$Filename`! &
+\verb!`r myList[["QC"]][[3]][["QC.defaults"]]$Filename`! \\ 
+\addlinespace
+Messsignal & 
+\verb!`r myList[["QC"]][[1]][["QC.defaults"]]$Analyt`! & 
+\verb!`r myList[["QC"]][[2]][["QC.defaults"]]$Analyt`! & 
+\verb!`r myList[["QC"]][[3]][["QC.defaults"]]$Analyt`! \\ 
+\addlinespace
+Zielwert &   
+`r myList[["QC"]][[1]][["QC.defaults"]]$LimitBG` \verb!`r myList[["QC"]][[1]][["QC.defaults"]]$Unit.Accept`! &
+`r myList[["QC"]][[2]][["QC.defaults"]]$LimitBG` \verb!`r myList[["QC"]][[2]][["QC.defaults"]]$Unit.Accept`! &
+`r myList[["QC"]][[3]][["QC.defaults"]]$LimitBG` \verb!`r myList[["QC"]][[3]][["QC.defaults"]]$Unit.Accept`! \\ 
+\addlinespace
+Gemessene Konzentration &
+`r if(!all(is.na(myList[["QC"]][[1]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[1]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[1]][["QC.Data"]]))){myList$Calibration$Info$Units[1]}`! &
+`r if(!all(is.na(myList[["QC"]][[2]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[2]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[2]][["QC.Data"]]))){myList$Calibration$Info$Units[2]}`! &
+`r if(!all(is.na(myList[["QC"]][[3]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[3]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[3]][["QC.Data"]]))){myList$Calibration$Info$Units[3]}`! \\ 
+Akzeptiert &  
+`r proof[names(myList[["QC"]][1])]` &
+`r proof[names(myList[["QC"]][2])]` &
+`r proof[names(myList[["QC"]][3])]` \\  
+\hline 
+\end{tabular}
+
+\vspace{1cm}
+
+\begin{tabular}{llll}
+\hline
+QC-Parameter & 
+\verb!`r myList[["QC"]][[4]][["QC.defaults"]]$QC.Name`! &
+\verb!`r myList[["QC"]][[5]][["QC.defaults"]]$QC.Name`! &
+\verb!`r myList[["QC"]][[6]][["QC.defaults"]]$QC.Name`! \\ 
+\hline 
+\addlinespace
+Art & 
+`r myList[["QC"]][[4]][["QC.defaults"]]$QC.Kind` &
+`r myList[["QC"]][[5]][["QC.defaults"]]$QC.Kind` &
+`r myList[["QC"]][[6]][["QC.defaults"]]$QC.Kind` \\ 
+\addlinespace
+Dateiname & 
+\verb!`r myList[["QC"]][[4]][["QC.defaults"]]$Filename`! &
+\verb!`r myList[["QC"]][[5]][["QC.defaults"]]$Filename`! &
+\verb!`r myList[["QC"]][[6]][["QC.defaults"]]$Filename`! \\ 
+\addlinespace
+Messsignal & 
+\verb!`r myList[["QC"]][[4]][["QC.defaults"]]$Analyt`! &
+\verb!`r myList[["QC"]][[5]][["QC.defaults"]]$Analyt`! &
+\verb!`r myList[["QC"]][[6]][["QC.defaults"]]$Analyt`! \\ 
+\addlinespace
+Zielwert &   
+`r myList[["QC"]][[4]][["QC.defaults"]]$Zielwert` $\pm$ `r myList[["QC"]][[4]][["QC.defaults"]]$Unsicherheit` \verb!`r myList[["QC"]][[4]][["QC.defaults"]]$Unit.Accept`! &
+`r myList[["QC"]][[5]][["QC.defaults"]]$Zielwert` $\pm$ `r myList[["QC"]][[5]][["QC.defaults"]]$Unsicherheit` \verb!`r myList[["QC"]][[5]][["QC.defaults"]]$Unit.Accept`! &
+`r myList[["QC"]][[6]][["QC.defaults"]]$Zielwert` $\pm$ `r myList[["QC"]][[6]][["QC.defaults"]]$Unsicherheit` \verb!`r myList[["QC"]][[6]][["QC.defaults"]]$Unit.Accept`! \\ 
+\addlinespace
+Gemessene Konzentration &
+`r if(!all(is.na(myList[["QC"]][[4]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[4]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[4]][["QC.Data"]]))){myList$Calibration$Info$Units[1]}`! &
+`r if(!all(is.na(myList[["QC"]][[5]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[5]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[5]][["QC.Data"]]))){myList$Calibration$Info$Units[2]}`! &
+`r if(!all(is.na(myList[["QC"]][[6]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[6]][["QC.Data"]]$Concentration),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[6]][["QC.Data"]]))){myList$Calibration$Info$Units[3]}`! \\
+Definierte Konzentration &
+`r if(!all(is.na(myList[["QC"]][[4]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[4]][["QC.Data"]]$Defined),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[4]][["QC.Data"]]))){myList$Calibration$Info$Units[1]}`! &
+`r if(!all(is.na(myList[["QC"]][[5]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[5]][["QC.Data"]]$Defined),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[5]][["QC.Data"]]))){myList$Calibration$Info$Units[2]}`! &
+`r if(!all(is.na(myList[["QC"]][[6]][["QC.Data"]]))){signif(as.numeric(myList[["QC"]][[6]][["QC.Data"]]$Defined),3)}` \verb!`r if(!all(is.na(myList[["QC"]][[6]][["QC.Data"]]))){myList$Calibration$Info$Units[3]}`! \\
+Akzeptiert &  
+`r proof[names(myList[["QC"]][4])]` &
+`r proof[names(myList[["QC"]][5])]` &
+`r proof[names(myList[["QC"]][6])]` \\  
+\hline 
+\end{tabular}
+
+\vspace{1cm}
+
+```{r Kommentar zur aktuellen QC Abweichung, echo=FALSE,comment=NA}
+# Definietion eines leeren Vektors
+comment <- c()
+# Sammeln der Kommentare durch eine Schleife in dem leeren Vektor
+for (i in names(myList[["QC"]])) {
+  # Nächste QC Karte wenn kein Eintrag vorliegt
+  if (all(is.na(myList[["QC"]][[i]][["QC.Data"]]))) {
+    comment <- c(comment,paste("QC Probe",i,"wurde bei dieser Messung nicht erkannt oder gemessen\n"))
+    next
+  }
+}
+cat(comment, sep = "\n")
+```
+
+Kommentar zur Akzeptanz der Messung: 
+\begin{Form}
+    \TextField[name = CommentActualQC,
+               width = \textwidth,%
+               height = 7em,% 
+               multiline=true,%
+               bordercolor = 1 1 1,% 
+               backgroundcolor = 1 1 1,%
+               color = 0 0 0,%
+               value = {}%
+               ]{}
+\end{Form}
+
+
+\newpage
+
+# Regelkarten
+
+## Blindwertkarte
+### Cis-Platin
+```{r Blindwertkarte Cis-Pt, echo=FALSE}
+print(myList$QC[[1]][["QC.Plot"]])
+df <- myList$QC[[1]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Intensity <-  as.numeric(df$Intensity)
+df$Concentration <-  as.numeric(df$Concentration)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+Alle Kommentare:
+
+```{r Kommentare Blindwertkarte Cis-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[1]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[1]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+  }
+}
+          
+```
+
+\newpage
+
+### Carbo-Platin
+```{r Blindwertkarte Carbo-Pt, echo=FALSE}
+print(myList$QC[[2]][["QC.Plot"]])
+df <- myList$QC[[2]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Intensity <-  as.numeric(df$Intensity)
+df$Concentration <-  as.numeric(df$Concentration)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+Alle Kommentare:
+
+```{r Kommentare Blindwertkarte Carbo-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[2]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[2]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+  }
+}
+          
+```
+
+\newpage
+
+### Oxali-Platin
+```{r Blindwertkarte Oxali-Pt, echo=FALSE}
+print(myList$QC[[3]][["QC.Plot"]])
+df <- myList$QC[[3]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Intensity <-  as.numeric(df$Intensity)
+df$Concentration <-  as.numeric(df$Concentration)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+Alle Kommentare:
+
+```{r Kommentare Blindwertkarte Oxali-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[3]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[3]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+  }
+}
+          
+```
+
+\newpage
+
+## Zielwertkarte 
+### Cis-Platin
+```{r Zielwertkarte Cis-Pt, echo=FALSE}
+print(myList$QC[[4]][["QC.Plot"]])
+df <- myList$QC[[4]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Concentration <-  as.numeric(df$Concentration)
+df$WFR <-  as.numeric(df$WFR)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+Alle Kommentare:
+
+```{r Kommentare Zielwertkarte Cis-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[4]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[4]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+    }
+}
+          
+```
+
+\newpage
+
+### Carbo-Platin
+```{r Zielwertkarte Carbo-Pt, echo=FALSE}
+print(myList$QC[[5]][["QC.Plot"]])
+df <- myList$QC[[5]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Concentration <-  as.numeric(df$Concentration)
+df$WFR <-  as.numeric(df$WFR)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+Alle Kommentare:
+
+```{r Kommentare Zielwertkarte Carbo-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[5]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[5]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+  }
+}
+          
+```
+
+\newpage
+
+### Oxali-Platin
+```{r Zielwertkarte Oxali-Pt, echo=FALSE}
+print(myList$QC[[6]][["QC.Plot"]])
+df <- myList$QC[[6]][["QC.Table"]] %>% select(-Comment,-TimeStamp,-Operator,-Outlier)
+df$Concentration <-  as.numeric(df$Concentration)
+df$WFR <-  as.numeric(df$WFR)
+df <- myDFsignif(df,3)
+kable(df, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+Alle Kommentare:
+
+```{r Kommentare Zielwertkarte Oxali-Pt, echo=FALSE}
+# Filter rows with comments
+if (!is.null(myList[["QC"]][[6]][["QC.Table"]][["Comment"]])) {
+  verb <- myList[["QC"]][[6]][["QC.Table"]] %>% filter(!Comment %in% "")
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header")) %>% 
+      column_spec(column = 3, width = "5cm")
+  }
+}
+          
+```
+
+\newpage
+
+
+# Kalibrierung
+## Kalibrierdaten
+
+```{r Kalibrationsdate,  echo=FALSE}
+  kable(myList$Calibration$Std.Concentration %>% select(-Index), "latex", longtable = T, booktabs = T, row.names = T, caption = "Konzentrationen der Standards in µg/L") %>% kable_styling(latex_options = c("repeat_header"))
+  kable(myList$Calibration$Std.PeakArea %>% select(-Index), "latex", longtable = T, booktabs = T, row.names = T, caption = "Gemessene Intensität der Standards in CPS") %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+
+## Bewertung der Kalibrierung `r myList$Input.Parameter$BGMethod`
+```{r Kalibrationsparameter,  echo=FALSE}
+if(myList$Input.Parameter$BGMethod == "DIN32645"){
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","yk","xNG","xEG","xBG")
+}else{
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","m","n","Alpha","Peak.Height","Baseline.Height","SN","xNG","xEG","xBG")
+}
+
+
+Calibration.Summary <- myDFsignif(myOLS_BG(myList$Calibration$OLS,Parameter = "b0"),6)
+for (p in Calibration.Parameter[-1]) {
+  Calibration.Summary <- rbind(Calibration.Summary,myDFsignif(myOLS_BG(myList$Calibration$OLS,Parameter = p),6),deparse.level = 0)
+}
+Calibration.Summary <- data.frame(Calibration.Summary,stringsAsFactors = F)
+Calibration.Summary <- cbind("Parameter" = Calibration.Parameter,Calibration.Summary,stringsAsFactors = F)
+# Format Calibration.Summary (keine e+00 und 4 Signifikante Stellen)
+kable(Calibration.Summary, "latex", longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+\newpage
+
+```{r Kalibration Diagramme, echo=FALSE}
+
+for (v in myList$Calibration$Info$Analytes) {
+  subList <- myList$Calibration$OLS[[v]]
+  
+  print(myList$Calibration$Cali.Plots[[v]])
+  print(subList$Plot_fit)
+  print(subList$Plot_res)
+}
+
+
+```
+
+\newpage
+
+# Rohdaten
+## Probentabelle
+```{r Probentabelle, echo=FALSE}
+kable(myList$Header, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Peak Area (CTS)
+```{r Ausgabe der Area, echo=FALSE}
+kable(myList$Chromatography$PeakArea$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Peak Height (Counts)
+```{r Ausgabe der Height Daten, echo=FALSE}
+kable(myList$Chromatography$PeakHeight$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Peak Start (s)
+```{r Ausgabe der Start Daten, echo=FALSE}
+kable(myList$Chromatography$PeakStart$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Peak End (s)
+```{r Ausgabe der End Daten, echo=FALSE}
+kable(myList$Chromatography$PeakEnd$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Retention Time (s)
+```{r Ausgabe der Retention Time, echo=FALSE}
+kable(myList$Chromatography$Retention$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+# Konzentrationen (`r unique(myList$Calibration$Info$Units)`)
+## Roh Konzentrationen
+```{r Ausgabe der Konzentrationen, echo=FALSE}
+kable(myList$Concentration$Concentration %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Verwendete Anzahl an Kalibrationspunkten (1-x)
+```{r Verwendete Kalibrationspunkte, echo=FALSE}
+kable(myList$Concentration$UsedStandards %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Filter von:   $c < BG  \Leftrightarrow  c = 0$ 
+```{r Filter <BG, echo=FALSE}
+kable(myList$Concentration$Conc.less.BG %>% select(-Index), "latex", longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+\newpage
+
+## Einberechnung der Verdünnungsfaktoren 
+```{r Verdünnungsfaktoren, echo=FALSE}
+VF <- merge(myList$Concentration$Conc.multiply.VF,myList$Header,by=c("Index","Labels")) %>% select(c("Index","Labels","Dilution Factor",myList$Calibration$Info$Analytes))
+VF <- VF[order(VF$Index),]
+kable(VF %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+#kable(myList$Concentration$Conc.multiply.VF %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Bereinigte Konzentrationen
+```{r Konzentrationen, echo=FALSE}
+kable(myList$Concentration$Conc.Final %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+# Chromatogramme
+```{r Chromatogramme, echo=FALSE}
+for (i in 1:length(myList$Header$Labels)) {
+  print(myList$Chromatography$Chromatogramm.Plots[[i]])
+}
+```
+
+
+

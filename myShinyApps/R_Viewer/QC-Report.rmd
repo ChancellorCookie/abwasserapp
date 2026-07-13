@@ -1,0 +1,230 @@
+---
+title: "Kontrollkarte"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{multicol}
+   - \usepackage{array}
+   - \usepackage{multirow}
+   - \usepackage{wrapfig}
+   - \usepackage{float}
+   - \usepackage{colortbl}
+   - \usepackage{pdflscape}
+   - \usepackage{tabu}
+   - \usepackage{threeparttable}
+   - \usepackage{threeparttablex}
+   - \usepackage[normalem]{ulem}
+   - \usepackage{makecell}
+   - \usepackage{xcolor}
+output: 
+  pdf_document:
+    fig_caption: yes
+    fig_height: 3.5
+    fig_width: 8.5
+params:
+  QCInfo: NA
+  Operator: NA
+  QCData: NA
+  QCPlot: NA
+  QCComment: NA
+--- 
+
+\pagenumbering{gobble}
+
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+### Initialise Packages ----
+# !!!!!!!!!!!!!!!!!!!!!!!!!!
+# ______________________________________________
+# Die Installation eines neuen Package MUSS zwingend über das Terminal passieren, 
+# da das Package ansonsten nicht in der Shiny-Server Version verfügbar ist
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Beispiel zur Installation des "shiny" Package über das Terminal
+# sudo su - -c "R -q -e \"install.packages('shiny', repos='http://cran.rstudio.com/')\""
+#__________________________________________
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#__________________________________________
+
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+
+QCInfo = params$QCInfo
+Operator = params$Operator
+QCData = params$QCData
+QCPlot = params$QCPlot
+QCComment = params$QCComment
+
+ReportTime <- format(Sys.time(), format = "%d.%m.%Y")
+# Avoid scientific notation to prevent LaTex errors
+options(scipen = 999)
+``` 
+
+
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r QCInfo$SAA.Menue`!}
+\cprotect\chead{\verb!`r QCInfo$QC.Name`!}
+\rhead{ZE1/`r Operator` `r ReportTime`}
+\cprotect\lfoot{\footnotesize \verb!`r QCInfo$Filename`!}
+\cprotect\cfoot{\footnotesize \verb!`r QCInfo$FullName`!}
+\rfoot{Version 1.0}
+
+```{r Report, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+# Verfahren: `r QCInfo$SAA.Menue` 
+## Kontrollkarte: `r QCInfo$QC.Name`
+
+
+```{r Regelkarte-Plot, echo=FALSE}
+print(QCPlot)
+
+```
+
+```{r Regelkarte-Statistik, echo=FALSE}
+df <- QCData
+
+Outlier <- as.logical(as.numeric(df$Outlier))
+if (!is.null(df$Intensity)) {
+  data <- as.numeric(df$Concentration)
+  clean <- as.numeric(df$Concentration[!Outlier])
+} else if (!is.null(df$WFR)){
+  data <- as.numeric(df$WFR)
+  clean <- as.numeric(df$WFR[!Outlier])
+}
+
+df.n <- length(data)
+df.mean <- mean(data)
+
+df.sd <- sd(data)
+df.rsd <- df.sd/df.mean
+
+clean.n <- length(clean)
+out.n <- length(data) - length(clean)
+clean.mean <- mean(clean)
+clean.sd <- sd(clean)
+clean.rsd <- clean.sd/clean.mean
+
+```
+\vspace{2cm}
+
+\small
+\begin{tabular}{lllll}
+\hline
+Kenndaten         &           & \hspace*{2cm} &                            &           \\ \hline \addlinespace
+Messwerte Gesamt  & `r df.n` &                & Ausreißerfreie Messwerte & `r clean.n`\\
+&&&Anteil Ausreißer (\%) & `r 100-clean.n/df.n*100`\\ 
+\addlinespace
+Mittelwert & `r df.mean`&&Ausreißerfreier Mittelwert & `r clean.mean` \\
+Standardabweichung & `r df.sd` &&Ausreißerfreie Standardabweichung & `r clean.sd` \\
+Variationskoeffizient & `r df.rsd` &&Ausreißerfreier Variationskoeffizient (\%)& `r clean.rsd` \\
+
+\hline
+\end{tabular}
+
+\vspace{1cm}
+
+## Daten
+
+```{r Regelkarte-Tabelle, echo=FALSE}
+df <- QCData
+
+if (QCInfo$QC.Kind == "VBW") {
+  df$Intensity <-  as.numeric(df$Intensity)
+  df$Concentration <-  as.numeric(df$Concentration)
+  df <- myDFsignif(df,3)
+} else if(QCInfo$QC.Kind == "QC"){
+  df$Concentration <-  as.numeric(df$Concentration)
+  df$WFR <-  as.numeric(df$WFR)
+  df <- myDFsignif(df,3)
+}
+
+
+kable(df,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+
+```
+
+## Kommentare
+```{r Regelkarte-Kommentare VBW, echo=FALSE}
+# Filter rows with comments
+  verb <- QCComment
+  # Proof if no rows with comments are available
+  if (nrow(verb) == 0) {
+    all.comments <- NULL
+  } else {
+    all.comments <- verb %>% select(Labels,StartTime,Comment,TimeStamp,Operator)
+    kable(all.comments,"latex",longtable = T,booktabs = T,row.names = F) %>% 
+      kable_styling(latex_options = c("repeat_header"),full_width = F) %>% 
+      column_spec(column = 3, width = "5cm") 
+  }
+  
+          
+```
+
+\begin{Form}
+    \TextField[name = CommentActualQC,
+               width = \textwidth,%
+               height = 20em,% 
+               multiline=true,%
+               bordercolor = 1 1 1,% 
+               backgroundcolor = 1 1 1,%
+               color = 0 0 0,%
+               value = {}%
+               ]{}
+\end{Form}
+
+\vspace*{\fill}
+`r ReportTime` 
+
+ZE1/`r Operator`
+
+

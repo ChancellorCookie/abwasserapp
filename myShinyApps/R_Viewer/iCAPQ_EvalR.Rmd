@@ -1,0 +1,381 @@
+---
+title: "iCAP Q Auswertung"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{lscape}
+   - \newcommand{\blandscape}{\begin{landscape}}
+   - \newcommand{\elandscape}{\end{landscape}}
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+    keep_tex: yes
+classoption: landscape
+params:
+  Operator: NA
+  BGMethod: NA
+  Alpha: NA
+  inFile: NA
+  PipettenList: NA
+  Significant.Digits: NA
+  QCSoll_SM28E: NA
+  QCSoll_MerckVI: NA
+  Masses: NA 
+  UseMeans: NA
+  UseIntCorr: NA
+
+--- 
+
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require("dplyr")
+require("tidyr")
+require("magrittr")
+require("stringr")
+require("ggplot2")
+require("outliers")
+require("RColorBrewer")
+require("kableExtra")
+require("xlsx")
+require("tcltk2")
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+#myTempFileRemove(path.root,FilePattern = ".cpt") 
+
+```
+
+
+```{r Parameter Input aus Shiny, include=FALSE}
+# Übernahme der Parameter Liste aus Knitr
+
+# ACHTUNG: die Class "knit_param_list" lässt keine Änderung der übergebenen Paramter zu!
+myParams <- unclass(params)
+
+#Standard Einstellung für Betrieb außerhalb von Shiny
+if(myParams$Operator =="NA"){myParams$Operator<-"Dronov"}
+if(myParams$BGMethod =="NA"){myParams$BGMethod<-"Kaiser"}
+if(myParams$Alpha =="NA"){myParams$Alpha<-0.01}
+if(myParams$PipettenList =="NA"){myParams$PipettenList <- c(1067,1097,1099)}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <- 3}
+if(myParams$QCSoll_SM28E =="NA"){myParams$QCSoll_SM28E <- 50}else{as.numeric(myParams$QCSoll_SM28E)}
+if(myParams$QCSoll_MerckVI =="NA"){myParams$QCSoll_MerckVI <- 50}else{as.numeric(myParams$QCSoll_MerckVI)}
+if(myParams$UseMeans == "NA"){myParams$UseMeans <-T}
+if(myParams$UseIntCorr == "NA"){myParams$UseIntCorr <-T}
+if(myParams$Masse == "NA"){myParams$Masse <- c("27","52","56","60","65","66","75","111","208")}
+if(myParams$inFile =="NA"){myParams$inFile <- tk_choose.files(filters = matrix( c("Alle Dateien","*.*","CSV Dateien","*.csv"),
+                                         nrow = 2,
+                                         ncol = 2,
+                                         byrow = T,
+                                         dimnames = list(c("All", "csv"),c("",""))))}
+
+```
+
+```{r Ausführung des Datenimports, include=FALSE}
+
+#myList <- suppressWarnings(readCSV_iCAPQ(myParams$inFile))
+myPreList <- suppressWarnings(readCSV_iCAPQ_short(myParams$inFile)) 
+```
+
+```{r Restrukturierung der Liste, echo=TRUE, include=FALSE }
+myList <- iCapQ_eQuant(myPreList,myParams)
+```
+
+```{r Berechnung der Mittelwerte aus den Wiederholungsmessungen, include=FALSE}
+#myList$eQuant[["Raw.Outlier"]] <- myeQuantAverage(myList$eQuant$Raw$Raw.Intensity$Data)
+## Ausreißertest funtioniert noch nicht richtig
+```
+
+
+```{r Korrektur mittels internem Standard, include=FALSE}
+myList$eQuant[["Corrected.Data"]] <- myInternalCorrection(myList)
+```
+
+
+```{r Berechnung der Konzentration und OLS, include=FALSE}
+myList <- myConcentration.Evaluation(myList)
+```
+
+
+```{r Speichern der Liste, include=FALSE}
+myRDATA.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myRDATA.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.RData")
+dirsave.myList.RData <- paste0(myRDATA.path,myRDATA.file)
+
+save(myList,file = dirsave.myList.RData)
+```
+
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+myXLSX.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myXLSX.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.xlsx")
+dirsave.myList.xlsx <- paste0(myXLSX.path,myXLSX.file)
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "Header"= myList$Header,
+                  "Final.Conc" = myList$eQuant$Evaluation$Conc.Final,
+                  "RawData"= myList$Raw.Data,
+                  "Raw.Average" =myList$eQuant$Raw$Raw.Average$Data,
+                  "IntStd.Average" = myList$eQuant$IntStd$Raw.Average,
+                  "IntStd.Factors" = myList$eQuant$IntStd$Average.Factors,
+                  "IntStd.Assignment" = myList$eQuant$IntStd$Assignment,
+                  "Corr.Average" = myList$eQuant$Corrected.Data$Corr.Average,
+                  "Std.Conc" = myList$eQuant$Std.Concentration,
+                  "BG.Calc" =  myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = "xBG"),
+                  "NG.calc" =  myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = "xNG"),
+                  "Raw.Conc" = myList$eQuant$Evaluation$Concentration,
+                  "BG.Conc" = myList$eQuant$Evaluation$Conc.less.BG,
+                  "VF.Conc" = myList$eQuant$Evaluation$Conc.multiply.VF)
+
+
+suppressWarnings(myXLSX.write(writeData,dirsave.myList.xlsx))
+```
+
+
+
+```{r Qualitätskontrolle, include=FALSE}  
+  #### Hier werden die QC Proben ausgewertet und die Regelkarten geführt
+ 
+# myList[["QC"]] <- list() 
+```
+
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=FALSE}
+### MUSS AN DIE ICAPQ ZWINGEND ANGEPASST WERDEN. CODE AUS Pt-Analytik
+
+# Function to track relevant Analytes in a sapply loop
+relevantIndex <- as.logical(
+  rowSums(
+    sapply(myList$Input.Parameter$Masse, function(i){
+      grepl(i,myList$eQuant$Calibration$Info$Analytes)})))
+
+relevantAnalytes <- myList$eQuant$Calibration$Info$Analytes[relevantIndex]
+relevantElements <- myList$eQuant$Calibration$Info$Elements[relevantIndex]
+relevantUnits <- myList$eQuant$Calibration$Info$Units[relevantIndex]
+
+Analyte <- paste0(relevantElements," (",relevantUnits,")")
+
+conc_clean <- myList$eQuant$Evaluation$Conc.Final %>% 
+  filter(str_detect(Labels,"^M")) %>% 
+  select(Labels,relevantAnalytes) %>% 
+  `names<-`(.,c("Labels",Analyte))
+
+# # AlphaNumerische Sortierung!
+ conc_clean <- conc_clean[order(conc_clean$Labels),] 
+
+kable(conc_clean, "latex", longtable = T,booktabs = T, row.names = F, caption = "Konzentrationen der Proben") %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+Bestimmungsgrenzen (BG) wurde nach `r myList$Input.Parameter$BGMethod` ermittelt und sind im Kapitel "Bewertung der Kalibration" hinterlegt.
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+
+\newpage
+
+# Header
+
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+Operator & `r myList$Input.Parameter$Operator`\\
+Datum& `r format(Sys.time(), format = "%d.%m.%Y")`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList`\\
+BG Methode & `r myList$Input.Parameter$BGMethod`\\
+$\alpha$ & `r myList$Input.Parameter$Alpha`\\
+Bericht Masse & `r myList$Input.Parameter$Masse`\\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits`\\
+Messdatei & \verb!`r myList$Input.Parameter$FileName`!\\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+Interne Standard Korrektur? & `r myList$Input.Parameter$UseIntCorr` \\
+Nur Mittelwerte betrachten? & `r myList$Input.Parameter$UseMeans`\\
+\hline
+\end{tabular}
+
+\newpage
+
+# SampleList
+```{r echo=FALSE}
+kable(myList$Header %>% select(-Index,-`Internal Standard`,-Standard,-Evaluate,-`Special Blank`), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped","repeat_header"))
+```
+
+
+\newpage
+
+# Roh-Intensitäten (CPS)
+```{r echo=FALSE}
+kable(myList$eQuant$Raw$Raw.Average$Data %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+\newpage
+
+\blandscape
+
+## Interner Standard Zuordnung
+
+```{r echo=FALSE}
+kable(myList$eQuant$IntStd$Assignment , "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped"))
+```
+
+\newpage
+
+## Interner Standard Faktoren
+```{r echo=FALSE}
+kable(myList$eQuant$IntStd$Average.Factors %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+\elandscape
+
+# Korrigierte Intensitäten (CPS)
+
+```{r echo=FALSE}
+kable(myList$eQuant$Corrected.Data$Corr.Average %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+\newpage
+
+# Konzentrationen (ungefiltert)
+```{r Ausgabe der Konzentrationen, echo=FALSE}
+kable(myList$eQuant$Evaluation$Concentration %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+\newpage
+
+# Verwendete Kalibrationspunkte 1-x
+```{r echo=FALSE}
+kable(myList$eQuant$Evaluation$UsedStandards %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+\newpage
+
+## Filter von:   c < BG  <=>  c = 0
+```{r echo=FALSE}
+kable(myList$eQuant$Evaluation$Conc.less.BG %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+\newpage
+
+## Einberechnung der Verdünnungsfaktoren
+```{r echo=FALSE}
+kable(myList$eQuant$Evaluation$Conc.multiply.VF %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+\newpage
+
+## Bereinigte Konzentrationen
+```{r echo=FALSE}
+kable(myList$eQuant$Evaluation$Conc.Final %>% select(-Index), "latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+\newpage
+
+## Bewertung der Kalibration (`r myList$Input.Parameter$BGMethod`)
+```{r echo=FALSE}
+Calibration.Parameter <- c("Methode","b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","sl","yk","xNG","xEG","xBG")
+Calibration.Summary <- myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = "Methode")
+for (p in Calibration.Parameter[-1]) {
+  Calibration.Summary <- rbind(Calibration.Summary,signif(as.numeric(myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = p)),4),deparse.level=1)
+}
+row.names(Calibration.Summary) <- Calibration.Parameter
+
+kable(Calibration.Summary, "latex", booktabs = T, row.names = T) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+
+\blandscape
+
+```{r echo=FALSE}
+
+for (v in myList$eQuant$Calibration$Info$Analytes) {
+  subList <- myList$eQuant$Calibration$OLS[[v]]
+  
+  print(subList$Plot_fit)
+  print(myList$eQuant$Calibration$Cali.Plots[[v]])
+  print(subList$Plot_res)
+}
+
+
+```
+
+\elandscape

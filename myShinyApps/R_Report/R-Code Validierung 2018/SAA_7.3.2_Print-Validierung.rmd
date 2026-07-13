@@ -1,0 +1,927 @@
+---
+title: "Pt-Spezies (SAA 7.3.2)"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+output: 
+  pdf_document:
+
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+params:
+  Operator: NA
+  BGMethod: NA
+  inFile: NA
+  PipettenList: NA
+  QCSoll.Cis: NA
+  QCSoll.Carbo: NA
+  QCSoll.Oxali: NA
+ 
+--- 
+
+
+
+
+```{r setup}
+
+# Notwendige Packages
+
+require("dplyr")
+require("tidyr")
+require("magrittr")
+require("stringr")
+require("ggplot2")
+require("outliers")
+require("RColorBrewer")
+require("kableExtra")
+require("xlsx")
+
+source('func_csvImport_iCAPQ.R', encoding = 'UTF-8')
+source('func_dfGather_iCAPQ.R', encoding = 'UTF-8')
+source("func_myOutlier.R")
+source("func_myCaliGraph.R")
+source("func_myLinReg.R")
+source("func_myBEN_DIN.R")
+source('func_mySIUnits.R', encoding = 'UTF-8')
+source('func_myTempFileRemove.R')
+source('func_Regelkarten.R')
+source('func_ZielwertkartenPlot.R')
+source('func_Blindwertkarten.R')
+source('func_myQCHandling.R', encoding = 'UTF-8')
+``` 
+
+```{r Parameter Input aus dem HTML Formular, echo=TRUE}
+
+myName    <- params$Operator
+BG_Method <- params$BGMethod
+inFile <- params$inFile
+PipettenList <- c("Pipetten-ID" = params$PipettenList)
+QCSoll.Cis <- params$QCSoll.Cis
+QCSoll.Carbo <- params$QCSoll.Carbo
+QCSoll.Oxali <- params$QCSoll.Oxali
+```
+
+```{r Einlesen QS-Relevanter Daten, echo=TRUE}
+Zielwert.Cis <- read.csv(paste0("\\\\10.1.8.210",
+                                "\\gc-ms-fid",
+                                "\\Analysen",
+                                "\\2018",
+                                "\\Berichte",
+                                "\\iCAPQ Messdaten",
+                                "\\Pt Spezies",
+                                "\\QC",
+                                "\\Pt-Spezies_Cis_Zielwert.csv"),
+                        header = T)
+Zielwert.Carbo <- read.csv(paste0("\\\\10.1.8.210",
+                                  "\\gc-ms-fid",
+                                  "\\Analysen",
+                                  "\\2018",
+                                  "\\Berichte",
+                                  "\\iCAPQ Messdaten",
+                                  "\\Pt Spezies",
+                                  "\\QC",
+                                  "\\Pt-Spezies_Carbo_Zielwert.csv"),
+                        header = T)
+Zielwert.Oxali <- read.csv(paste0("\\\\10.1.8.210",
+                                  "\\gc-ms-fid",
+                                  "\\Analysen",
+                                  "\\2018",
+                                  "\\Berichte",
+                                  "\\iCAPQ Messdaten",
+                                  "\\Pt Spezies",
+                                  "\\QC",
+                                  "\\Pt-Spezies_Oxali_Zielwert.csv"),
+                        header = T)
+
+ZielwertMM3 <- list("Zielwert" = c(Zielwert.Cis$Zielwert,
+                                   Zielwert.Carbo$Zielwert,
+                                   Zielwert.Oxali$Zielwert),
+                    "Unsicherheit" = c(Zielwert.Cis$Unsicherheit,
+                                       Zielwert.Carbo$Unsicherheit,
+                                       Zielwert.Oxali$Unsicherheit),
+                    "LimitBG" = c(Zielwert.Cis$LimitBG,
+                                  Zielwert.Carbo$LimitBG,
+                                  Zielwert.Oxali$LimitBG))
+```
+
+
+```{r Default value definition, echo=TRUE}
+if(myName =="NA"){myName<-"Sadlowski"} 
+if(BG_Method =="NA"){BG_Method<-"DIN32645"}
+if(inFile =="NA"){inFile <- choose.files(
+  filters = matrix( c("Alle Dateien",
+                      "*.*",
+                      "CSV Dateien",
+                      "*.csv"),
+                    nrow = 2,
+                    ncol = 2,
+                    byrow = T,
+                    dimnames = list(c("All",
+                                      "csv"),
+                                    c("",""))))}
+if(PipettenList =="NA"){
+  PipettenList <- c(1067,1097,1099)}
+
+if(QCSoll.Cis =="NA"){
+  QCSoll.Cis <- 5
+}else{
+  as.numeric(QCSoll.Cis)}
+
+if(QCSoll.Carbo =="NA"){
+  QCSoll.Carbo <- 5
+}else{
+  as.numeric(QCSoll.Carbo)}
+
+if(QCSoll.Oxali =="NA"){
+  QCSoll.Oxali <- 5
+}else{
+  as.numeric(QCSoll.Oxali)}
+```
+
+```{r Ausführung des Datenimports, echo=TRUE}
+myList <- suppressWarnings(readCSV_iCAPQ(inFile))
+```
+
+```{r Extraktion der generierten Dataframes, echo=TRUE}
+
+Chromatogramm <- myList$Data$MainRuns
+massTraces <- unique(names(myList$Data$MainRuns))
+massTraces <- massTraces[!match(massTraces,
+                                table = c("Index","Labels"),
+                                nomatch = 0)]
+
+Sonstiges <- myList$Data$BrigidMS                    
+
+CalDef <- data.frame(myList$Data$Chromatography.Concentration$Index[
+  which(myList$Data$BrigidMS$`Sample Type` != "UNKNOWN")],
+                     myList$Data$Chromatography.Concentration$Labels[
+                       which(myList$Data$BrigidMS$`Sample Type` != "UNKNOWN")],
+                     c(0.05,0.1,0.15,0.20,0.25,0.3,0.35,0.40,0.45,0.5), # Cis-Platin
+                     c(0.05,0.1,0.15,0.20,0.25,0.3,0.35,0.40,0.45,0.5), # Carbo-Platin
+                     c(0.05,0.1,0.15,0.20,0.25,0.3,0.35,0.40,0.45,0.5)  # Oxali-Platin
+) %>% `names<-`(.,names(myList$Data$Chromatography.Concentration))
+
+myUnits <-  myList$Units$Units                    
+myConcUnit <- myUnits[!match(myUnits,
+                             table = c("cps","%","s","cts","Y","Time"),
+                             nomatch = 0)]
+Analytes <- myList$Analytes
+Raw_Intensity <- myList$Data$Chromatography.PeakArea
+Retention <- myList$Data$Chromatography.Retention
+
+Retention_mean <- sapply(Retention[,3:ncol(Retention)],function(i)mean(i))
+
+Retention_mean_df <- as.data.frame(cbind(Analytes, 
+                                         Retention_mean),
+                                   row.names = NULL,
+                                   stringsAsFactors = FALSE)
+Retention_mean_df[2] <- as.numeric(Retention_mean_df[[2]])
+
+Analytes_Order <- order(Retention_mean_df$Retention_mean)
+
+Analytes <- Analytes[Analytes_Order]
+
+Raw_Intensity <- Raw_Intensity[c(1,2,Analytes_Order+2)]
+Corr_Intensity <- Raw_Intensity
+CalDef <- CalDef[c(1,2,Analytes_Order+2)]
+
+
+```
+
+```{r Gather Chromatogramm, echo=TRUE}
+if(!is.null(Chromatogramm)){
+  n <- (ncol(Chromatogramm) - 2)/4
+  chromLabels <- c("counts","time")
+  
+  massTracesChromLabels <- NULL
+  for (i in 1:length(massTraces)) {
+    for (j in 1:length(chromLabels)){
+      massTracesChromLabels <- c(massTracesChromLabels,
+                                 paste0(massTraces[i],
+                                        ".",
+                                        chromLabels[j]))}}
+ linseq <- rep(1:n, each=4)
+  numLabels <- paste0(massTracesChromLabels,".",linseq)
+  names(Chromatogramm) <- c("Index","Labels",numLabels)
+  
+  SortedChromatogramm <- suppressWarnings(
+    dfGather_iCAPQ(Chromatogramm,
+                   massTracesChromLabels))}
+```
+
+```{r Ermittlung der Kalibrationsdaten, echo=TRUE}
+
+StdIndex <- Sonstiges %>% 
+  select(Index,`Sample Type`)%>%
+  filter(`Sample Type` %in% c("BLK","STD"))
+StdIndex <- StdIndex$Index
+StdIndex <- StdIndex[!StdIndex %in% c(NA,"")]
+
+# Das gleiche gilt für die Proben als "UNKNOWN"
+SmplIndex <- Sonstiges$Index[Sonstiges$`Sample Type` == "UNKNOWN"]
+SmplIndex <- SmplIndex[!SmplIndex %in% c(NA,"")]
+
+CalY <- Corr_Intensity[Corr_Intensity$Index %in% as.integer(StdIndex),]
+
+CalDef_Clean <- CalDef
+
+
+
+
+```
+
+
+```{r Ermittlung des optimalen Kalibrationsbereichs, echo=TRUE}
+
+CalIndex   <- Corr_Intensity
+OutOfRange <- Corr_Intensity
+
+CalIndex[1:nrow(CalIndex),3:ncol(CalIndex)] <- 0
+OutOfRange[1:nrow(OutOfRange),3:ncol(OutOfRange)] <- 0
+# Abfrage für die Schleife
+for (i in 1:nrow(Corr_Intensity)) { 
+  for (j in 3:ncol(Corr_Intensity)) { 
+    for (k in length(StdIndex):3) { 
+      
+      smpl <- Corr_Intensity[i,j]
+      std2 <- Corr_Intensity[StdIndex[k],j] 
+      std1 <- Corr_Intensity[StdIndex[k-1],j]
+      
+      test_low    <- smpl < std2   
+      test_high   <- smpl > std1 
+      test_higher <- smpl > std2 
+      
+      if (k == length(StdIndex) & smpl > std2) {
+        CalIndex[i,j] <- k
+        OutOfRange[i,j] <- 1
+        break
+      } else if(std1 < smpl & smpl <= std2) {
+        CalIndex[i,j] <- k
+        break
+      } else if(k == 3){ 
+        CalIndex[i,j] <- k
+        break
+      }
+    }
+  }
+}
+
+```
+
+```{r Berechnung der individuellen linearen Regression und Konzentration, echo=TRUE}
+CalX <- CalDef
+conc <- CalIndex
+conc[1:nrow(conc),3:ncol(conc)] <- 0 
+CalcConcNumber <- conc
+for (i in 3:ncol(CalX)) { 
+  
+  df <- data.frame(CalX[,c(1,2,i)],CalY[,i])
+  names(df)<-c(names(CalX)[c(1,2)],"xVal","yVal")
+  df <- df[order(df[3]),]
+  
+  nAllStds <- max(df$Index)-df$Index[1] + 1
+  
+  for (j in 1:nrow(CalIndex)) { 
+    
+    nStds <- CalIndex[j,(i)]
+    lr <- myLinReg(df,nStds)
+    c <- (Corr_Intensity[j,(i)] - lr$b0)/lr$b1
+    
+    while ((lr$rSquare < .998 | lr$b1 <= 0 ) & nStds < nAllStds ) {
+      nStds <- nStds + 1
+      lr <- myLinReg(df,nStds)
+      c <- (Corr_Intensity[j,(i)] - lr$b0)/lr$b1
+    }
+    conc[j,(i)] <- c
+    CalcConcNumber[j,(i)] <- nStds
+  }
+}
+
+```
+
+```{r Prüfung der Konzentration auf Unterschreitung der BG, echo=TRUE}
+
+conc_BG <- conc
+
+# Tabelle für NWGs und BGs
+BG_DF <- data.frame(row.names = c("NWG","BG","y(NWG)","y(BG)"))
+ReportBG <- data.frame("BG" = rep(0,length(Analytes)),
+                       "Einheit" = rep(myConcUnit,length(Analytes)),
+                       row.names = Analytes)
+for (i in 1:length(Analytes)) {
+  
+  df <- data.frame(
+    CalDef_Clean[,c(1,2)],
+    CalDef_Clean[Analytes[i]],
+    Corr_Intensity %>% 
+      filter(Index %in% CalDef_Clean$Index) %>% 
+      select(Analytes[i]),
+    stringsAsFactors = F
+  )
+  names(df)<-c(names(CalDef_Clean)[c(1,2)],"xVal","yVal")
+  df <- df[order(df[3]),]
+  
+  OLS <- myBEN_DIN(df$xVal,df$yVal,k = 3,alpha = 0.01,m=1)
+  if (BG_Method == "DIN32645") {
+    NG <- OLS$xNG
+    BG <- OLS$xBG
+  } else if(BG_Method == "SN"){
+    
+    if(!is.null(Chromatogramm)){
+      SNMass <- "195"
+      
+      PeakStart.Smpl <- unlist(myList$Data$Chromatography.PeakStart[2,Analytes])
+      PeakEnd.Smpl <- unlist(myList$Data$Chromatography.PeakEnd[2,Analytes])
+      
+      Data.Blk <- SortedChromatogramm %>% 
+        filter(Index %in% Chromatogramm$Index[1])%>%
+        select(Index,Labels,contains(SNMass)) %>% 
+        `names<-`(.,c("Index","Labels","Counts","Time"))
+      
+      Data.Smpl <- SortedChromatogramm %>% 
+        filter(Index %in% Chromatogramm$Index[2])%>% 
+        select(Index,Labels,contains(SNMass)) %>% 
+        `names<-`(.,c("Index","Labels","Counts","Time"))
+      
+      Data.Blk  <- Data.Blk [order(Data.Blk$Time),]
+      Data.Smpl  <- Data.Smpl [order(Data.Smpl$Time),]
+      
+      SN <- NULL
+      for (j in 1:length(Analytes)) {
+        
+        t1 <- PeakStart.Smpl[j]
+        t2 <- PeakEnd.Smpl[j]
+        
+        Signal <- Data.Smpl %>% filter(Time > t1 & Time < t2)
+        Signal <- mean(Signal$Counts)*(t2-t1)
+        Noise <- Data.Blk %>% filter(Time > t1 & Time < t2)
+        Noise <- mean(Noise$Counts)*(t2-t1)
+        
+        SN <- c(SN,Signal/Noise)
+      }
+    }
+    BG <- CalDef_Clean[2,Analytes[i]]*10/SN[i]
+    NG <- BG/3
+  }
+  
+  yBG <- BG*OLS$b1 + OLS$b0 # Intensität der BG
+  yNG <- NG*OLS$b1 + OLS$b0
+  BG_DF[1,i] <- signif(NG,3)
+  BG_DF[2,i] <- signif(BG,3)
+  BG_DF[3,i] <- signif(yNG,3)
+  BG_DF[4,i] <- signif(yBG,3)
+  
+  names(BG_DF)[i] <- Analytes[i]
+  
+  ReportBG[Analytes[i],1] <- signif(BG,3)
+  if(ZielwertMM3$LimitBG[i] > BG){
+    ReportBG[Analytes[i],1] <- signif(ZielwertMM3$LimitBG[i],3)
+    BG <- ZielwertMM3$LimitBG[i]
+  }
+  conc_BG[conc[Analytes[i]]<BG,Analytes[i]] <-0 
+Analytes[i]
+print(OLS)
+}
+
+
+
+```
+
+```{r Verdünnungsfakoren, echo=TRUE}
+
+VF_DF <- myList$Data$BrigidMS %>% select(Index,Labels,`Dilution Factor`)
+
+conc_VF <- conc_BG
+conc_VF[,3:ncol(conc_VF)] <- conc_BG[,3:ncol(conc_BG)]*VF_DF$`Dilution Factor`
+```
+
+```{r Runden auf signifikante Stellen, echo=TRUE}
+conc_sig <- conc_VF
+
+n<-2
+conc_sig[,3:ncol(conc_sig)] <- signif(conc_VF[,3:ncol(conc_VF)],n)
+```
+
+```{r Enddarstellung als Character mit <BG, echo=TRUE}
+conc_final <- conc_sig
+
+n<-2
+
+for (i in 1:nrow(conc_final)) {
+  for(j in 3:ncol(conc_final)){
+    if (conc_sig[i,j] == 0) {
+      conc_final[i,j] <- "< BG"
+    } else{
+      conc_final[i,j] <- formatC(conc_sig[i,j],digits = n,format = "fg",flag = "#")
+      conc_final[i,j] <- gsub("\\.$","",conc_final[i,j])
+    }
+  }
+}
+```
+
+```{r Schreiben der Daten in ein Excel Workbook, echo=TRUE}
+dirsave_xlsx <- paste0(dirname(myList$Path),
+                       "/",
+                       str_split_fixed(myList$Filename,"[.]",2)[1],
+                       "_rEval.xlsx")
+
+wb <- createWorkbook()
+sheet1  <- createSheet(wb, sheetName="Raw_Intensity")
+sheet2  <- createSheet(wb, sheetName="CalDef")
+sheet3  <- createSheet(wb, sheetName="conc")
+sheet4  <- createSheet(wb, sheetName="BG_DF")
+sheet5  <- createSheet(wb, sheetName="VF_DF")
+sheet6  <- createSheet(wb, sheetName="CalPoints")
+
+addDataFrame(Raw_Intensity, sheet1)
+addDataFrame(CalDef, sheet2)
+addDataFrame(conc, sheet3)
+addDataFrame(BG_DF, sheet4)
+addDataFrame(VF_DF, sheet5)
+addDataFrame(CalIndex, sheet6)
+
+i<-1
+OverwriteCondition <- T
+while(OverwriteCondition){
+  
+  if(!file.exists(dirsave_xlsx)){
+    OverwriteCondition <- F
+  }else{
+    dirsave_xlsx <- paste0(dirname(myList$Path),
+                           "/",
+                           str_split_fixed(myList$Filename,"[.]",2)[1],
+                           "_recalc",
+                           as.character(i),
+                           "_rEval.xlsx")
+    OverwriteCondition <- T
+    i <- i+1
+  }
+}
+
+saveWorkbook(wb, dirsave_xlsx)
+```
+
+```{r Kommentar, echo=TRUE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Filename`
+
+Die Messung erfolgte am `r myList$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r gsub(myList$Filename,"",myList$Path)`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=TRUE}
+
+Analyte_Abbr <- paste0(Analytes," (",myConcUnit,")")
+
+conc_clean <- conc_final %>% 
+  filter(str_detect(Labels,"^M")) %>% 
+  select(-Index) %>% 
+  `names<-`(.,c("Labels",unique(Analyte_Abbr)))
+conc_clean <- conc_clean[order(conc_clean$Labels),] 
+kable(conc_clean, "latex", longtable = T,booktabs = T, 
+      row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+Bestimmungsgrenze (BG) nach `r BG_Method` in `r myConcUnit`:
+
+Cis-Platin `r signif(ReportBG[1,1],2)` `r myConcUnit`
+
+Carbo-Platin `r signif(ReportBG[2,1],2)` `r myConcUnit`
+
+Oxali-Platin `r signif(ReportBG[3,1],2)` `r myConcUnit`
+
+
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Filename`!}
+\chead{}
+\rhead{ZE1/`r myName` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r gsub(myList$Filename,"",myList$Path)`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myName`
+
+
+
+# Intensitäten (CTS)
+```{r Ausgabe der Roh Daten, echo=TRUE}
+kable(Raw_Intensity %>% 
+        select(-Index), "latex",longtable = T, booktabs = T, 
+      row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+
+# Konzentrationen (ungefiltert) (`r myConcUnit`)
+```{r Ausgabe der KOnzentrationen, echo=TRUE}
+conc[3:ncol(conc)] <- round(conc %>% 
+                              select(-Index,-Labels),3)
+
+kable(conc %>% select(-Index), "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+# Verwendete Kalibrationspunkte 1-x
+```{r Verwendete Kalibrationspunkte, echo=TRUE}
+
+kable(CalcConcNumber %>% 
+        select(-Index), "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+
+## Bestimmungsgrenzen nach `r BG_Method`  (`r myConcUnit`)
+```{r Ausgabe der Bestimmungsgrenzen, echo=TRUE}
+kable(BG_DF, "latex", longtable = T, 
+      booktabs = T, row.names = T) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+## Konzentrationen der Standards (`r myConcUnit`)
+```{r Ausgabe der Kalibrationsstandards, echo=TRUE}
+kable(CalDef %>% 
+        select(-Index), "latex", longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+## Filter (`r myConcUnit`):   
+### c < BG  <=>  c = 0    
+```{r Filter nach Bestimmungsgrenzen, echo=TRUE}
+conc_BG[3:ncol(conc_BG)] <- round(conc_BG %>% select(-Index,-Labels),3)
+
+kable(conc_BG %>% 
+        select(-Index),"latex", longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+
+```
+
+\newpage
+## Einberechnung der Verdünnungsfaktoren (`r myConcUnit`)
+```{r Einberechnung der Verdünnungsfaktoren, echo=TRUE}
+conc_VF_Print <- data.frame(conc_VF,VF_DF$`Dilution Factor`)
+conc_VF_Print[3:ncol(conc_VF_Print)] <- round(conc_VF_Print %>% select(-Index,-Labels),3)
+
+names(conc_VF_Print) <- c(names(conc_VF),"VF")
+kable(conc_VF_Print %>% 
+        select(-Index), "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+## Konzentrationen in (`r myConcUnit`)
+```{r Ausgabe der gesamten Daten, echo=TRUE}
+kable(conc_final %>% 
+        select(-Index), "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+
+# Kalibrationen
+```{r echo=TRUE}
+
+for (i in 3:ncol(CalX)) {
+  df <- data.frame(CalX[,c(1,3,i)],CalY[,i])
+  
+  names(df)<-c(names(CalX)[c(1,3)],"xVal","yVal")
+  g <- myCaliGraph(df,names(CalX[i]),myUnits) 
+  print(g)
+}  
+```
+
+
+
+
+# Chromatogramme
+```{r echo=TRUE}
+if(!is.null(Chromatogramm)){
+  # Welche Massespur?
+  PlotMass <- "195" # In SAA definiert
+  
+  # Farbskala für den Plot
+  MarkColors <- c(brewer.pal(9,"Set1"),brewer.pal(8,"Accent")) 
+  FillColors <- c(brewer.pal(9,"Pastel1"),brewer.pal(8,"Accent")) 
+  
+  for (i in 1:length(Chromatogramm$Index)) {
+    plotData <- SortedChromatogramm %>% 
+      filter(Index %in% Chromatogramm$Index[i])%>% 
+      select(Index,Labels,contains(PlotMass))
+    
+   plotData <- plotData[order(plotData[[2]]),] %>% 
+      `names<-`(.,c("Index","Labels","Counts","Time"))
+    
+    PeakStart <- unlist(myList$Data$Chromatography.PeakStart[i,Analytes])
+    PeakEnd <- unlist(myList$Data$Chromatography.PeakEnd[i,Analytes])
+    PeakMax <- unlist(myList$Data$Chromatography.Retention[i,Analytes])
+    PeakArea <- unlist(myList$Data$Chromatography.PeakArea[i,Analytes])
+    PeakHight <- unlist(myList$Data$Chromatography.PeakHeight[i,Analytes])
+    MaxChrom <- max(plotData$Counts)
+    
+    g <- ggplot(plotData,aes(Time, Counts)) +
+      geom_line()+
+      labs(y = "Intensity (CPS)", 
+           x = "Time (s)",
+           title = "Pt-Spezies",
+           subtitle = Chromatogramm$Labels[i]) 
+    
+    for (j in 1:length(Analytes)) {
+      
+      if (PeakArea[j] > 0) {
+        g <- g + annotate("segment", 
+                          x = PeakStart[j], 
+                          xend = PeakStart[j], y = 0, 
+                          yend = MaxChrom*0.1, 
+                          colour = MarkColors[j],
+                          size = 1)
+        g <- g + annotate("segment", 
+                          x = PeakEnd[j], 
+                          xend = PeakEnd[j], 
+                          y = 0, 
+                          yend = MaxChrom*0.1, 
+                          colour = MarkColors[j],
+                          size = 1)
+        
+        g <- g + annotate("text", 
+                          x = PeakMax[j], 
+                          y = PeakHight[j]*(1+0.05), 
+                          label = names(PeakMax)[j])}}
+    print(g)
+    }}else{print("No Chromatographic Data available!")
+  }
+```
+
+
+
+# Regelkarten
+
+
+```{r QC Extraction and storage, echo=TRUE}
+
+KillOld <- F
+
+QC.Cis.VBWtowrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc,
+                                  QCFilter = "^M.+?QC VBW",
+                                  ColumnFilter = "Cis",
+                                  Handling = "VBW",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC",
+                                                       "\\Pt-Spezies_Cis_QCVBW.csv"),
+                                  TargetValue = NA,
+                                  KillOld = KillOld)
+
+QC.Cis.MM3towrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc_VF,
+                                  QCFilter = "^M.+?QC MM3",
+                                  ColumnFilter = "Cis",
+                                  Handling = "QC",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC",
+                                                       "\\Pt-Spezies_Cis_QCMM3.csv"),
+                                  TargetValue = QCSoll.Cis,
+                                  KillOld = KillOld)
+
+QC.Carbo.VBWtowrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc,
+                                  QCFilter = "^M.+?QC VBW",
+                                  ColumnFilter = "Carbo",
+                                  Handling = "VBW",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC","\\Pt-Spezies_Carbo_QCVBW.csv"),
+                                  TargetValue = NA,
+                                  KillOld = KillOld)
+
+QC.Carbo.MM3towrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc_VF,
+                                  QCFilter = "^M.+?QC MM3",
+                                  ColumnFilter = "Carbo",
+                                  Handling = "QC",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC",
+                                                       "\\Pt-Spezies_Carbo_QCMM3.csv"),
+                                  TargetValue = QCSoll.Carbo,
+                                  KillOld = KillOld)
+
+QC.Oxali.VBWtowrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc,
+                                  QCFilter = "^M.+?QC VBW",
+                                  ColumnFilter = "Oxali",
+                                  Handling = "VBW",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC",
+                                                       "\\Pt-Spezies_Oxali_QCVBW.csv"),
+                                  TargetValue = NA,
+                                  KillOld = KillOld)
+
+QC.Oxali.MM3towrite <- myQCHandling(myList = myList,
+                                  Intensity = Corr_Intensity,
+                                  Concentration = conc_VF,
+                                  QCFilter = "^M.+?QC MM3",
+                                  ColumnFilter = "Oxali",
+                                  Handling = "QC",
+                                  PathToWrite = paste0("\\\\10.1.8.210",
+                                                       "\\gc-ms-fid",
+                                                       "\\Analysen",
+                                                       "\\2018",
+                                                       "\\Berichte",
+                                                       "\\iCAPQ Messdaten",
+                                                       "\\Pt Spezies",
+                                                       "\\QC",
+                                                       "\\Pt-Spezies_Oxali_QCMM3.csv"),
+                                  TargetValue = QCSoll.Oxali,
+                                  KillOld = KillOld)
+
+```
+
+
+## Blindwertkarte
+### Cis-Platin
+```{r echo=TRUE}
+kable(QC.Cis.VBWtowrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+### Carbo-Platin
+```{r echo=TRUE}
+kable(QC.Carbo.VBWtowrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+### Oxali-Platin
+```{r echo=TRUE}
+kable(QC.Oxali.VBWtowrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+## Zielwertkarte SAA 7.3.2(MM3)
+### Cis-Platin
+```{r echo=TRUE}
+kable(QC.Cis.MM3towrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+### Carbo-Platin
+```{r echo=TRUE}
+kable(QC.Carbo.MM3towrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+### Oxali-Platin
+```{r echo=TRUE}
+kable(QC.Oxali.MM3towrite, "latex",longtable = T, 
+      booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+### Cis-Platin
+```{r echo=TRUE}
+## Regelkarten Plots
+
+plotData <- data.frame("Index"=QC.Cis.VBWtowrite$StartTime,
+                       "Value" = QC.Cis.VBWtowrite$Concentration)
+
+g <- myBlindwertkartenPlot(plotData = plotData,
+                           BWKrit = Zielwert.Cis$LimitBG,
+                           title = "Blindwert-Karte",
+                           yLabel = "Konzentration (µg/L)",
+                           xLabel = "Messzeitpunkt")
+print(g)
+```
+
+### Carbo-Platin
+```{r echo=TRUE}
+plotData <- data.frame("Index"=QC.Carbo.VBWtowrite$StartTime,
+                       "Value" = QC.Carbo.VBWtowrite$Concentration)
+
+g <- myBlindwertkartenPlot(plotData = plotData,
+                           BWKrit = Zielwert.Carbo$LimitBG,
+                           title = "Blindwert-Karte",
+                           yLabel = "Konzentration (µg/L)",
+                           xLabel = "Messzeitpunkt")
+print(g)
+```
+
+### Oxali-Platin
+```{r echo=TRUE}
+plotData <- data.frame("Index"=QC.Oxali.VBWtowrite$StartTime,
+                       "Value" = QC.Oxali.VBWtowrite$Concentration)
+
+g <- myBlindwertkartenPlot(plotData = plotData,
+                           BWKrit = Zielwert.Oxali$LimitBG,
+                           title = "Blindwert-Karte",
+                           yLabel = "Konzentration (µg/L)",
+                           xLabel = "Messzeitpunkt")
+print(g)
+```
+
+### Cis-Platin
+```{r echo=TRUE}
+plotData <- data.frame("Index"=QC.Cis.MM3towrite$StartTime,
+                       "Value" = QC.Cis.MM3towrite$WFR)
+
+g <- myZielwertkartenPlot(plotData = plotData,
+                          Zielwert = Zielwert.Cis$Zielwert,
+                          Unsicherheit = Zielwert.Cis$Unsicherheit,
+                          title = "MM3-Zielwert-Karte",
+                          yLabel = "Wiederfindungsrate (%)",
+                          xLabel = "Messzeitpunkt")
+print(g)
+```
+
+### Carbo-Platin
+```{r echo=TRUE}
+plotData <- data.frame("Index"=QC.Carbo.MM3towrite$StartTime,
+                       "Value" = QC.Carbo.MM3towrite$WFR)
+
+g <- myZielwertkartenPlot(plotData = plotData,
+                          Zielwert = Zielwert.Carbo$Zielwert,
+                          Unsicherheit = Zielwert.Carbo$Unsicherheit,
+                          title = "MM3-Zielwert-Karte",
+                          yLabel = "Wiederfindungsrate (%)",
+                          xLabel = "Messzeitpunkt")
+print(g)
+```
+
+### Oxali-Platin
+```{r echo=TRUE}
+plotData <- data.frame("Index"=QC.Oxali.MM3towrite$StartTime,
+                       "Value" = QC.Oxali.MM3towrite$WFR)
+
+g <- myZielwertkartenPlot(plotData = plotData,
+                          Zielwert = Zielwert.Oxali$Zielwert,
+                          Unsicherheit = Zielwert.Oxali$Unsicherheit,
+                          title = "MM3-Zielwert-Karte",
+                          yLabel = "Wiederfindungsrate (%)",
+                          xLabel = "Messzeitpunkt")
+print(g)
+```
+

@@ -1,0 +1,46 @@
+# Docker Build-Kontext ausgeschlossen
+.git
+.gitignore
+*.md
+*.log
+*.Rhistory
+*.RData
+*.Rproj
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+.DS_Store
+Thumbs.db
+node_modules
+*.bak
+*~
+\#*\#
+.#*
+.lock
+renv/
+renv.lock
+packrat/
+packrat.lock
+*.o
+*.so
+*.dll
+
+# App-Backups
+**/app_backup*
+**/*_backup*
+**/alt/
+
+# Daten-Verzeichnisse (werden als Volumes gemountet)
+myShinyApps/R_Viewer/ICP-OES/
+myShinyApps/R_Viewer/Multielement/
+myShinyApps/R_Viewer/Pt-Spezies/
+myShinyApps/R_Viewer/Platin Gesamt/
+myShinyApps/R_Viewer/Bromid Bromat/
+myShinyApps/R_Viewer/gc-ms-fid/
+myShinyApps/R_Viewer/Config/Backups/
+
+# Log-Dateien
+myShinyApps/R_Viewer/log.usr
+myShinyApps/R_Viewer/defaults.log
+myShinyApps/R_Viewer/defaults.usr

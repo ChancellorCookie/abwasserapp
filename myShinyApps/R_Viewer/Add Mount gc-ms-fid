@@ -1,0 +1,16 @@
+
+
+# Mount the gc-ms-fid folder in the wd with:
+sudo mount -t cifs //10.1.2.210/gc-ms-fid /srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid -o username=cunha
+
+sudo mount -t cifs "//10.89.11.34/F8 - Umweltanalytik \u0026 Toxikologie" /srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid -o username=IEU\simon.schastok
+
+sudo mount -t cifs "//10.89.11.34/F8 - Umweltanalytik & Toxikologie" /srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid -o credentials=/home/tigger/simonschastokcred
+
+# the mount connection
+# /srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid
+
+NbR^n~h06;
+
+# Remove the link to server folder
+sudo umount /srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid

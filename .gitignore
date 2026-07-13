@@ -1,0 +1,56 @@
+# R
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+.Rproj.user/
+*.RData
+
+# Logs
+*.log
+log.usr
+defaults.log
+app.log
+
+# Data directories (volume-mounted in Docker)
+myShinyApps/R_Viewer/ICP-OES/
+myShinyApps/R_Viewer/Multielement/
+myShinyApps/R_Viewer/Pt-Spezies/
+myShinyApps/R_Viewer/Platin Gesamt/
+myShinyApps/R_Viewer/Bromid Bromat/
+myShinyApps/R_Viewer/gc-ms-fid/
+
+# Config backups
+myShinyApps/R_Viewer/Config/Backups/
+myShinyApps/R_Viewer/Config/defaults.sqlite-journal
+
+# Measurement data CSVs (large, volume-mounted)
+myShinyApps/R_Viewer/*.csv
+
+# Credentials (sensitive)
+myShinyApps/R_Viewer/R_Viewer.usr
+myShinyApps/R_Viewer/R_Viewer.pw
+
+# Docker volumes (runtime data)
+data/
+logs/
+
+# Broken/auto-sourced modules
+R/
+
+# Non-target external projects
+myShinyApps/non-target BfG/
+
+# Binaries
+*.exe
+*.dll
+*.pdf
+*.png
+*.exe
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+*.bak
+*~

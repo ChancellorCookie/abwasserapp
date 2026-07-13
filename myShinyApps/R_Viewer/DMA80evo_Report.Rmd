@@ -1,0 +1,202 @@
+---
+title: "DMA80evo Hg in Kohle"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage{xcolor}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{amsmath}
+   - \usepackage{float}
+   - \usepackage{lscape}
+   - \newcommand{\blandscape}{\begin{landscape}}
+   - \newcommand{\elandscape}{\end{landscape}}
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 3.5
+    fig_width: 7
+params:
+  myList: NA
+--- 
+
+
+```{r include=FALSE}
+
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+
+myList <- params$myList
+ReportTime <- format(Sys.time(), format = "%d.%m.%Y")
+#load("/srv/shiny-server/myShinyApps/R_Viewer/513myListDebug.RData")
+myList$Input.Parameter$FilePath <- "\\\\10.1.8.210\\gc-ms-fid\\Analysen\\2018\\Berichte\\DMA80evo Messdaten\\"
+```
+
+
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=FALSE}
+
+kable(myList$Samples$Report, 
+      "latex", 
+      longtable = T,
+      booktabs = T, 
+      row.names = F, 
+      caption = "Konzentrationen der Proben") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+
+
+```
+
+Bestimmungsgrenze (BG) mittels \verb!`r myList[["Calibration"]][["OLS"]][[1]][["Methode"]]`!:     `r myList$Concentration$BG.Report` µg/kg
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r ReportTime`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r ReportTime` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+\newpage
+
+# Header
+\begin{center}
+\captionof{table}{Input Parameters}
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+Operator & `r myList$Input.Parameter$Operator`\\
+Datum & `r ReportTime`\\
+Verwendete Waage & Mettler Toledo (Modell: AJ 150/9 K+M; Nr: 320.006)\\
+BG Methode & `r myList$Calibration$OLS$Hg$Methode`\\
+BG aus SAA? & `r myList$Input.Parameter$BG.SAA`\\
+$\alpha$ & `r myList$Input.Parameter$Alpha`\\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits`\\
+Messdatei & \verb!`r myList$Input.Parameter$FileName`!\\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+c(NIST 1632d) & `r myList$QC$Input.Parameter$Standards$NIST1632d$QCSoll.513` µg/kg \\
+Zielwert NIST 1632d & `r myList$QC$Input.Parameter$Standards$NIST1632d$DataZielwert$Zielwert` $\pm$ `r myList$QC$Input.Parameter$Standards$NIST1632d$DataZielwert$Unsicherheit`\% \\
+Notwendige BG & `r myList$QC$Input.Parameter$Blanks$VBW$DataZielwert$LimitBG` ng/L \\
+\hline
+\end{tabular}
+\end{center}
+
+
+\blandscape
+\newpage
+
+## Rohdaten
+
+### Unbereinigt
+
+```{r Ausgabe der Roh Daten, echo=FALSE}
+
+Intensity_Raw <- myList$RawData$Raw %>% select(SampleName,Remark,Amount,Unit,Height,Hg..ng.,Concentration,Cell,CalFactor) 
+names(Intensity_Raw) <- c("Labels","Remark","Einwaage","Einheit","Absorbtion","Hg (ng)","Konzentration (µg/kg)","Zelle","CalFactor")
+
+kable(Intensity_Raw, "latex",longtable = T, booktabs = T, row.names = F,caption = "Rohdaten") %>% kable_styling(latex_options = c("repeat_header"))
+```
+\elandscape
+
+\newpage
+
+## Kalibrationskenndaten nach DIN 32645
+
+```{r echo=FALSE}
+myList$Calibration$OLS$Hg$Plot_fit
+
+```
+
+
+```{r  echo=FALSE}
+myList$Calibration$OLS$Hg$Plot_res
+```
+
+\newpage
+
+\blandscape
+
+## Regelkarten
+
+```{r echo=FALSE}
+kable(myList$QC$Control.Chart.Data$VBW, "latex",longtable = T, booktabs = T, caption = "Blindwertkarte Zelle0", row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+kable(myList$QC$Control.Chart.Data$NISTZ0, "latex",longtable = T, booktabs = T, caption = "Zielwertkarte Zelle0", row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+kable(myList$QC$Control.Chart.Data$NISTZ1, "latex",longtable = T, booktabs = T, caption = "Zielwertkarte Zelle1", row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\elandscape
+\newpage
+
+```{r echo=FALSE}
+print(myList$QC$Control.Chart.Plots$VBW)
+```
+
+```{r echo=FALSE}
+print(myList$QC$Control.Chart.Plots$NISTZ0)
+```
+
+```{r echo=FALSE}
+print(myList$QC$Control.Chart.Plots$NISTZ1)
+```

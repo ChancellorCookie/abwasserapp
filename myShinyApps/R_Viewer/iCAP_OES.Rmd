@@ -1,0 +1,771 @@
+---
+title: "iCAP 6500 Duo Auswertung"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{amsmath}
+output: 
+  pdf_document:
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+params:
+  Operator: NA
+  BGMethod: NA
+  Alpha: NA
+  Masse: NA
+  inFile: NA
+  PipettenList: NA
+  Significant.Digits: NA
+  BG.SAA: NA
+  QCSoll_731_MM2: NA
+  QCSoll_731_MM3: NA 
+  UseMeans: NA
+  UseIntCorr: NA
+  PathRegelKarteVBW: NA
+  PathRegelKarteMM2: NA
+  PathRegelKarteMM3: NA
+  PathZielwertMM2: NA
+  PathZielwertMM3: NA
+classoption: landscape
+---
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+
+```
+
+```{r Definition der Rahmen-Parameter, include=FALSE}
+Operator <- "Dronov"
+DefCal <- data.frame("V1" =c( 0.0 , 0.01 , 0.1 , 0.5 , 1 , 2))
+Significant.Digits <- 2
+CalUnit <- "mg/L"                     
+BG_Method <- "Kaiser"         #   "DIN32645"  "Kaiser"
+IntCorrWL <- "auto"  # "auto" "manuell"
+chkIntStd <- F # Interne Standard Korrektur
+
+```
+
+```{r Load Data, include=FALSE}
+myList <- suppressWarnings(iCAP6000_process(DefCal = DefCal,
+                           CalUnit = CalUnit,
+                           BG_Method = BG_Method,
+                           Operator = Operator,
+                           chkIntStd = chkIntStd,
+                           Significant.Digits = Significant.Digits,
+                           IntCorr.Selection.WL = IntCorrWL))
+rm(BG_Method,CalUnit,Operator,DefCal,chkIntStd,Significant.Digits,IntCorrWL)
+```
+
+```{r BugFix: Trennung der Proben nach Methode, include=FALSE}
+## Dieser Chunk dient der Fehlerbehebung bei Messungen mit mehreren Methoden. Das sollte eigentlich beim Datenexport nicht passieren.
+header <- myList$Header
+CalDF <- header %>% filter(Probentyp %in% "Kal")
+Methods <- unique(CalDF$Methode)
+
+if(length(Methods)>1){
+  print("In der Sequenz sind mehr als einen Methode verwendet worden. Es wird derzeit nur eine Methode unterstützt. Daher werden nur Proben ausgewertet, die mit der gleichen Methode gemessen wurden und deren Kalibrationsdaten verfügbar sind!")
+  header <- header %>% filter(Methode %in% Methods[1])
+  residualIndex <- header$Index
+  resultsDF <- resultsDF %>% filter(Index %in% residualIndex)
+  IntStdDF <- IntStdDF %>% filter(Index %in% residualIndex)
+} 
+rm(CalDF,Methods,header)
+```
+
+```{r Mittelwerte unter Berücksichtigung von Außreißern, include=FALSE}
+myList$Measured[["Means.Outliers"]] <- myList$Measured$Means
+myList$Measured[["SD.Outliers"]] <- myList$Measured$SD
+myList$Measured[["RSD.Outliers"]] <- myList$Measured$RSD
+myList$Measured[["Outlier.Test"]] <- list()
+
+myList$IntStd[["Means.Outliers"]] <- myList$IntStd$Means
+myList$IntStd[["SD.Outliers"]] <- myList$IntStd$SD
+myList$IntStd[["RSD.Outliers"]] <- myList$IntStd$RSD
+myList$IntStd[["Outlier.Test"]] <- list()
+wdh <- myList$Header$Messwiederh.
+n1 <- cumsum(wdh)-wdh+1
+n2 <- cumsum(wdh)
+outlier.test <-T
+alpha <- 0.01
+Nalimov <- F
+
+for (i in 1:length(wdh)) { # Schleife für Anzahl an Proben
+  current.sample <- paste(i,myList$Header$Probenname[i],sep = ".")
+  myCurrentSampleOutlierList <- list("Perform.Outlier.Test" = outlier.test,
+                                     "Alpha" = alpha,
+                                     "Nalimov" = Nalimov)
+  
+  
+  for (j in 1:length(myList$Measured$Analytes)){# Schleife für Anzahl an Analyt
+    vec <- myList$Measured$Values[n1[i]:n2[i],j]
+    current.Analyte <- myList$Measured$Analytes[j]
+    
+    myTempResults <- suppressWarnings(myMean(vec = vec,
+                                             outlier.test,
+                                             alpha,
+                                             Nalimov))
+    
+    myList$Measured$Means.Outliers[i,j] <- round(myTempResults$mean,1)
+    myList$Measured$SD.Outliers[i,j] <- myTempResults$sd
+    myList$Measured$RSD.Outliers[i,j] <- myTempResults$rsd
+    myCurrentSampleOutlierList[[current.Analyte]] <- myTempResults$Outlier.Test
+  }
+  
+  myList$Measured$Outlier.Test[[current.sample]] <- myCurrentSampleOutlierList
+  
+  
+  if(myList$IntStd$Perform.IntStd){
+    myCurrentSampleOutlierList <- list("Perform.Outlier.Test" = outlier.test,
+                                       "Alpha" = alpha,
+                                       "Nalimov" = Nalimov)
+    
+    for (k in 1:length(myList$IntStd$Standards)){
+      vec <- myList$IntStd$Values[n1[i]:n2[i],k]
+      current.Analyte <- myList$IntStd$Standards[k]
+      
+      myTempResults <- suppressWarnings(myMean(vec = vec,
+                                               outlier.test,
+                                               alpha,
+                                               Nalimov))
+      
+      myList$IntStd$Means.Outliers[i,k] <- round(myTempResults$mean,1)
+      myList$IntStd$SD.Outliers[i,k] <- myTempResults$sd
+      myList$IntStd$RSD.Outliers[i,k] <- myTempResults$rsd
+      myCurrentSampleOutlierList[[current.Analyte]] <- myTempResults$Outlier.Test
+    }
+    myList$IntStd$Outlier.Test[[current.sample]] <- myCurrentSampleOutlierList
+  }
+  
+}
+rm(myTempResults,vec,wdh,n1,n2,myCurrentSampleOutlierList,current.Analyte,current.sample,alpha,i,j,k,Nalimov,outlier.test)
+
+```
+
+
+```{r Internal Standard Factor Calculation, include=FALSE}
+
+if(myList$IntStd$Perform.IntStd){
+  #Berechnung der Faktoren des Internen Standards
+  IntFactDF_func <- function(df){ # Erfordert einen einspaltigen DataFrame
+    Denominator <- df[1]
+    dfFact <- df/Denominator
+    dfFact
+  }
+  
+  IntStdFactorDF <- myList$IntStd$Means.Outliers
+  IntStdFactorDF[myList$IntStd$Standards] <- sapply(IntStdFactorDF[myList$IntStd$Standards], function(i)IntFactDF_func(i))
+  myList$IntStd[["Int.Corr.Factors"]] <- IntStdFactorDF
+  
+  rm(IntStdFactorDF)
+}
+
+```
+
+
+```{r Internal Standard Correction, include=FALSE}
+
+if(myList$IntStd$Perform.IntStd){ # Wenn jedem Messwert ein InternerStandard zugewiesen ist
+  trace.Analyte <- myList$Measured$Analytes
+  if (myList$IntStd$IntCorr.Selection.WL == "auto") {
+    trace.IntStd <- unlist(myList$Measured$ISRef)
+  }
+  data.Analyte <- myList$Measured$Means.Outliers
+  data.IntStd <- myList$IntStd$Int.Corr.Factors
+  corr.Analyte <- data.Analyte
+  
+  for (i in 1:length(trace.Analyte)) { # Verrechnung dazugehörenden Internen Standards
+    corr.Analyte[trace.Analyte[i]] <- data.Analyte[trace.Analyte[i]]/data.IntStd[trace.IntStd[i]]
+  }
+  
+  myList$Measured[["Corrected.Means"]] <- corr.Analyte
+  
+  rm(trace.Analyte,trace.IntStd,data.Analyte,data.IntStd,corr.Analyte)
+}else{
+  myList$Measured[["Corrected.Means"]] <- myList$Measured$Means.Outliers
+}
+
+```
+
+```{r Ermittlung des optimalen Kalibrationsbereichs, include=FALSE}
+
+# Ermittlung des passenden Kalibrierbereichs, in Abhängigkeit der Intensität der Probe
+# Matrix mit   (Anzahl Proben) x (Anzahl Massen)   Dimension
+Intensities <- myList$Measured$Corrected.Means[myList$Measured$Analytes]
+CalIndex   <- Intensities
+OutOfRange <- CalIndex
+StdIndex  <- myList$Header %>% filter(Probentyp %in% "Kal") %>% select(Index) %>% pull()
+
+CalIndex[,] <- 0
+OutOfRange[,] <- 0
+# Abfrage für die Schleife
+for (i in 1:nrow(Intensities)) { # Schleife für Anzahl an Proben
+  for (j in 1:ncol(Intensities)) { # Schleife für Anzahl an Massen
+    
+   
+    
+    ####
+    # "Out of Range" kann bei Standards, die im OverFlow gemessen wurden, falsch 0 gesetzt sein!
+    ####
+    for (k in length(StdIndex):3) { # Schleife für Anzahl an Standards (Reverse)
+      
+      std2 <- Intensities[StdIndex[k],j] 
+      std1 <- Intensities[StdIndex[k-1],j]
+      smpl <- Intensities[i,j]
+      
+      
+      if (is.na(smpl)) { # wenn größer als höster Standard
+        CalIndex[i,j] <- NA
+        OutOfRange[i,j] <- NA
+        break
+      }
+      
+      
+      test.highest <- (k == length(StdIndex)) & (smpl > std2) # wenn größer als höster Standard
+      test.between2 <- (std1 < smpl) & (smpl <= std2) # Probe zwischen zwei Standards
+      test.less3 <- k == 3 # wenn kleiner als der dritte standard
+      
+      if (is.na(test.highest)) {
+        test.highest <- F
+      }
+      
+      if (is.na(test.between2)) {
+        test.between2 <- F
+      }
+      
+      if (is.na(test.less3)) {
+        test.less3 <- F
+      }
+      
+      
+      if (test.highest) { # wenn größer als höster Standard
+        CalIndex[i,j] <- k
+        OutOfRange[i,j] <- 1
+        break
+      } else if(test.between2) { # Probe zwischen zwei Standards
+        CalIndex[i,j] <- k
+        break
+      } else if(test.less3){ # wenn kleiner als der dritte standard
+        CalIndex[i,j] <- k
+        break
+      }
+    }
+  }
+}
+
+myList[["Evaluation"]] <- list("Sample.In.Range" = CalIndex,"Sample.OutOf.Range" = OutOfRange)
+
+rm(Intensities,CalIndex,OutOfRange,StdIndex,smpl,std1,std2,test.less3,test.between2,test.highest)
+```
+
+```{r Berechnung der individuellen linearen Regression und Konzentration, include=FALSE}
+
+conc <- myList$Measured$Corrected.Means
+CalcConcNumber <- myList$Measured$Corrected.Means
+conc[,myList$Measured$Analytes] <- 0 # wird später als Charakter formatiert
+CalcConcNumber[,myList$Measured$Analytes] <- 0
+
+for (v in names(myList$Calibration$Definition)) { # Schleife für Anzahl definierter Elemente
+  
+  
+  ### Abfrage nach Wellenlänge gleichen Elements
+  for (w in grep(pattern = v, x = myList$Measured$Analytes,value = T)) {
+    
+    Cal.Index <- myList$Header %>% filter(Probentyp %in% "Kal") %>% select(Index) %>% pull()
+    # DataFrame der Kalibrationsdaten
+    df <- data.frame("Index" = Cal.Index,
+                     "xVal" = myList$Calibration$Definition[Cal.Index,v],
+                     "yVal" = myList$Measured$Corrected.Means %>% filter(Index %in% Cal.Index) %>% select(w) %>% pull())
+    # Doppelte Eckige Klammern, um "yVal" als Vektor zu extrahieren. Sonst wir der ColName nicht überschrieben
+    
+    df <- df[order(df$xVal),] # Sortieren der Datenpunkte nach aufsteigender Konzentration der Standards
+    
+    ##########################
+    # Bug durch eine Datei, bei der die ersten Messungen der SampleList Fehlmessungen waren und nicht exportiert wurden
+    # -> Der die Spalte "Index" der Raw_Intensity  beginnt nicht bei 1
+    # -> nAllStds ist die Differenz der Indizes.
+    # -> +1 weil der index nicht bei 0 startet.
+    
+    nAllStds <- max(df$Index)-df$Index[1] + 1 # Der erste Index muss nicht zwingend bei 1 beginnen!
+    ##########################
+    
+    CalIndex <- myList$Evaluation$Sample.In.Range
+    
+    
+    for (j in 1:nrow(CalIndex)) { # Schleife für Anzahl an Proben
+      if (is.na(CalIndex[j,w])) {
+        conc[j,w] <- Inf
+        CalcConcNumber[j,w] <- Inf
+        next
+      }
+      nStds <- CalIndex[j,w]
+      lr <- myLinReg(df,nStds)
+      c <- (myList$Measured$Corrected.Means[myList$Measured$Analytes][j,w] - lr$b0)/lr$b1
+      
+      while ((lr$rSquare < .99 | lr$b1 <= 0 ) & nStds < nAllStds ) {
+        nStds <- nStds + 1
+        lr <- myLinReg(df,nStds)
+        c <- (myList$Measured$Corrected.Means[myList$Measured$Analytes][j,w] - lr$b0)/lr$b1
+      }
+      conc[j,w] <- c
+      CalcConcNumber[j,w] <- nStds
+    }
+  }
+}
+
+myList$Evaluation[["Concentration"]] <- conc
+myList$Evaluation[["Number.Used.Standards"]] <- CalcConcNumber
+rm(conc,CalIndex,CalcConcNumber,df,lr,nStds,nAllStds,c,v,w,i,j,k)
+```
+
+```{r Kalibration Graph in einer Funktion und als Schleife aufgerufen, include=FALSE}
+myPlots <- list()
+for (v in names(myList$Calibration$Definition)) { # Schleife für Anzahl definierter Elemente
+  
+  
+  ### Abfrage nach Wellenlänge gleichen Elements
+  for (w in grep(pattern = v, x = myList$Measured$Analytes,value = T)) {
+    
+    Cal.Index <- myList$Header %>% filter(Probentyp %in% "Kal") %>% select(Index) %>% pull()
+    # DataFrame der Kalibrationsdaten
+    df <- data.frame("Index" = Cal.Index,
+                     "xVal" = myList$Calibration$Definition[Cal.Index,v],
+                     "yVal" = myList$Measured$Corrected.Means %>% filter(Index %in% Cal.Index) %>% select(w) %>% pull())
+    # Doppelte Eckige Klammern, um "yVal" als Vektor zu extrahieren. Sonst wir der ColName nicht überschrieben
+    
+    g <- myCaliGraph(df,w,myList$Calibration$Unit) # Beinhaltet auch die Berechnung der Lineraren Regression
+    
+    myPlots[[w]] <- g
+  }}  
+rm(Cal.Index,df,g)
+```
+
+
+```{r Prüfung der Konzentration auf Unterschreitung der BG, include=FALSE}
+conc <- myList$Evaluation$Concentration
+conc_BG <- myList$Evaluation$Concentration
+
+# Tabelle für NWGs und BGs
+BG_DF <- data.frame(row.names = c("NWG","BG","y(NWG)","y(BG)"))
+myList$Calibration[["OLS"]] <-list()
+
+for (v in names(myList$Calibration$Definition)) { # Schleife für Anzahl definierter Elemente
+  
+  
+  ### Abfrage nach Wellenlänge gleichen Elements
+  for (w in grep(pattern = v, x = myList$Measured$Analytes,value = T)) {
+    
+    Cal.Index <- myList$Header %>% filter(Probentyp %in% "Kal") %>% select(Index) %>% pull()
+    # DataFrame der Kalibrationsdaten
+    df <- data.frame("Index" = Cal.Index,
+                     "xVal" = myList$Calibration$Definition[Cal.Index,v],
+                     "yVal" = myList$Measured$Corrected.Means %>% filter(Index %in% Cal.Index) %>% select(w) %>% pull())
+    # Doppelte Eckige Klammern, um "yVal" als Vektor zu extrahieren. Sonst wir der ColName nicht überschrieben
+    
+    df <- df[order(df$xVal),] # Sortieren der Datenpunkte nach aufsteigender Konzentration der Standards
+
+    m <- min(myList$Header$Messwiederh.) # Messwiederholungen
+    
+    ## Berechnung der BEN Kenngrößen
+    vecX <- df$xVal
+    vecY <- df$yVal
+    OLS <- myBEN_DIN(vecX,vecY,k = 3,alpha = 0.05,m=m,Method = "Kal",Titel = w) # Ordinary Least Square (OLS) Methode nach DIN
+    # Welche BG soll berücksichtigt werden?
+    if (myList$Calibration$Bestimmungsgrenze.Methode == "DIN32645") {
+      NG <- OLS$xNG
+      BG <- OLS$xBG # Berechnung der Bestimmungsgrenze nach DIN32645
+    } else if(myList$Calibration$Bestimmungsgrenze.Methode == "Kaiser"){
+      NG <- myList$Measured$SD.Outliers[1,w]*3/OLS$b1
+      BG <- myList$Measured$SD.Outliers[1,w]*9/OLS$b1 # Berechnung der Bestimmungsgrenze nach Kaiser (10*s)
+    }
+    
+    yBG <- BG*OLS$b1 + OLS$b0 # Intensität der BG
+    yNG <- NG*OLS$b1 + OLS$b0
+    BG_DF[1,w] <- signif(NG,3)
+    BG_DF[2,w] <- signif(BG,3)
+    BG_DF[3,w] <- signif(yNG,3)
+    BG_DF[4,w] <- signif(yBG,3)
+    
+    myList$Calibration$OLS[[w]]<- OLS
+    
+    
+    conc_BG[conc[[w]] < BG,w] <- 0  # Prüfung und gleichzeitige Überschreibung der <BG Werte
+  }
+}
+myList$Evaluation[["Betimmungsgrenzen"]] <- BG_DF
+myList$Evaluation[["Kleiner.Bestimmungsgrenze"]] <- conc_BG
+rm(conc_BG,conc,BG_DF,df,Cal.Index,v,w,m,vecX,vecY,OLS,NG,BG,yNG,yBG)
+
+```
+
+```{r Verdünnungsfakoren, include=FALSE}
+
+VF_DF <- as.numeric(myList$Header$KorrFaktor)
+
+conc_VF <- myList$Evaluation$Kleiner.Bestimmungsgrenze
+conc_VF[,myList$Measured$Analytes] <- myList$Evaluation$Kleiner.Bestimmungsgrenze[,myList$Measured$Analytes]*VF_DF
+myList$Evaluation[["Mal.Verd.Faktor"]] <- conc_VF
+rm(VF_DF,conc_VF)
+```
+
+```{r Runden auf signifikante Stellen, include=FALSE}
+
+conc_sig <- myList$Evaluation$Mal.Verd.Faktor
+
+conc_sig[,myList$Measured$Analytes] <- signif(myList$Evaluation$Mal.Verd.Faktor[,myList$Measured$Analytes],
+                                              myList$Report$Significant.Digits)
+myList$Evaluation[["Significante.Stellen"]] <- conc_sig
+
+rm(conc_sig)
+```
+
+```{r Enddarstellung als Character mit <BG, include=FALSE}
+
+conc_final <- myList$Evaluation$Significante.Stellen
+
+for (i in 1:nrow(conc_final)) {
+  for(w in myList$Measured$Analytes){
+    if (myList$Evaluation$Significante.Stellen[i,w] == 0) {
+      conc_final[i,w] <- "< BG"
+    } else if(myList$Evaluation$Significante.Stellen[i,w] == Inf){
+      conc_final[i,w] <- "Err"
+    } else{
+      conc_final[i,w] <- formatC(myList$Evaluation$Significante.Stellen[i,w],
+                                 digits = myList$Report$Significant.Digits,
+                                 format = "fg",
+                                 flag = "#")
+      conc_final[i,w] <- gsub("\\.$","",conc_final[i,w])
+    }
+  }
+}
+myList$Evaluation[["Concentration.Final"]] <- conc_final
+rm(conc_final,i,w)
+
+```
+
+
+```{r Zwischenspeichern der Daten, eval=FALSE, include=FALSE}
+#####################################################################
+# Hier werden die Daten in einer R-Liste und Excel Datei gespeichert
+#####################################################################
+```
+
+
+```{r Sicheren der gesamten Datenstruktur als *.RData File, include=FALSE}
+
+dirsave.myList.RData  <- paste0(dirname(myList$Report$Path),"/",str_split_fixed(myList$Report$Filename,"[.]",2)[1],"_myList.RData")
+dirsave.myPlots.RData <- paste0(dirname(myList$Report$Path),"/",str_split_fixed(myList$Report$Filename,"[.]",2)[1],"_myPlots.RData")
+save(file=dirsave.myList.RData, list="myList")
+save(file=dirsave.myPlots.RData, list="myPlots")
+
+```
+
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+dirsave.myList.xlsx <- paste0(dirname(myList$Report$Path),"/",str_split_fixed(myList$Report$Filename,"[.]",2)[1],"_rEval.xlsx")
+
+wb <- createWorkbook()
+
+
+### In Schleife verpacken
+
+xlsxData <- myList$RawData$Data
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Roh Daten"))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname,Messwiederh.),
+    myList$Measured$Means %>% select(-Index))
+if(myList$IntStd$Perform.IntStd){
+  xlsxData <- cbind(
+    xlsxData,
+    myList$IntStd$Means %>% select(-Index))}
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Gemittelte Daten der Messrechner-Software"))
+
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Measured$Corrected.Means %>% select(-Index))
+if(myList$IntStd$Perform.IntStd){
+  xlsxData <- cbind(
+    xlsxData,
+    myList$IntStd$Int.Corr.Factors %>% select(-Index))}
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Nalimov, MW, Interner Standard Korrektur"))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Number.Used.Standards %>% select(-Index))
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Verwendete Anzahl an Standards"))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Concentration %>% select(-Index),digits = 4))
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName=paste0("ungefilterte Konzentrationen in", myList$Calibration$Unit)))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Kleiner.Bestimmungsgrenze %>% select(-Index),digits = 4))
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Konzentrationen größer BG"))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname,KorrFaktor),
+    signif(x = myList$Evaluation$Mal.Verd.Faktor %>% select(-Index),digits = 4))
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Mal KorrFaktor"))
+
+
+xlsxData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Concentration.Final %>% select(-Index))
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName="Finale Konzentrationen"))
+
+
+xlsxData <- myList$Evaluation$Betimmungsgrenzen
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName=paste0("Bestimmungsgrenzen (",myList$Calibration$Bestimmungsgrenze.Methode,")")))
+
+
+xlsxData <- myList$Calibration$Definition
+addDataFrame(
+  xlsxData,createSheet(
+    wb,sheetName=paste0("Definition der Kalibrationsstandards in", myList$Calibration$Unit)))
+
+
+
+saveWorkbook(wb, dirsave.myList.xlsx)
+rm(wb,xlsxData,dirsave.myList.xlsx)
+
+```
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Report$Filename`
+
+Die Messung erfolgte am `r myList$Report$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+\footnotesize "\verb!`r myList$Report$Path`!"
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenergebnissen (Dateiendung "_rEval.xlsx").
+
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Report$Filename`!}
+\chead{}
+\rhead{ZE1/Dronov `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Report$Path`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+# Intensitäten
+## Rohdaten
+### Gemittelte Daten der Messrechner-Software  
+```{r Ausgabe der Roh Daten, echo=FALSE}
+kableData <- cbind(
+      myList$Header %>% select(Probenname,Messwiederh.),
+      myList$Measured$Means %>% select(-Index))
+if(myList$IntStd$Perform.IntStd){
+  kableData <- cbind(
+    kableData,
+    myList$IntStd$Means %>% select(-Index))}
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+### Nalimov-Ausreißertest, Mittelwerte, Interner Standard Korrektur
+```{r Ausgabe nach Ausreißerkorrektur, echo=FALSE}
+kableData <- 
+  cbind(
+      myList$Header %>% select(Probenname),
+      myList$Measured$Corrected.Means %>% select(-Index))
+
+  if(myList$IntStd$Perform.IntStd){
+  kableData <- cbind(
+    kableData,
+    myList$IntStd$Int.Corr.Factors %>% select(-Index))}
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+### Auswahl der Standards 1-x
+```{r Ausgabe der verwendeten Standards, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Number.Used.Standards %>% select(-Index))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+### Ungefilterte Konzentrationen (`r myList$Calibration$Unit`)
+```{r Ausgabe der ungefilteren Konzentrationen, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Concentration %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Eliminierung von c < Bestimmungsgrenzen nach `r myList$Calibration$Bestimmungsgrenze.Methode`  (`r myList$Calibration$Unit`)
+```{r Filter kleiner Bestimmungsgrenze, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Kleiner.Bestimmungsgrenze %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Einberechnung der Verdünnungsfaktoren (`r myList$Calibration$Unit`)
+```{r Einberechnung der Verdünnungsfaktoren, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname,KorrFaktor),
+    signif(x = myList$Evaluation$Mal.Verd.Faktor %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Konzentrationen in (`r myList$Units[1]`)
+```{r Report Konzentrationen, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Concentration.Final %>% select(-Index))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+\newpage
+
+# Kalibrationen
+
+### Bestimmungsgrenzen nach `r myList$Calibration$Bestimmungsgrenze.Methode` (`r myList$Calibration$Unit`)
+```{r Ausgabe der Bestimmungsgrenzen, echo=FALSE}
+kableData <- 
+  myList$Evaluation$Betimmungsgrenzen
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Konzentrationen der Standards (`r myList$Calibration$Unit`)
+```{r Ausgabe der Definierten Standardkonzentration, echo=FALSE}
+kableData <- 
+ myList$Calibration$Definition
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+\newpage
+
+# Kalibrationen
+```{r Calibration Graphen, echo=FALSE}
+
+for (i in 1:length(myPlots)) {
+  print(myPlots[[i]])
+}  
+
+```
+
+

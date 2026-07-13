@@ -1,0 +1,367 @@
+---
+title: "DMA80evo Hg in Kohle"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{amsmath}
+output: 
+  pdf_document:
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+params:
+  Operator: NA
+  BGMethod: NA
+  Alpha: NA
+  inFile: NA
+  Significant.Digits: NA
+  BG.SAA: NA
+  QCSoll_NIST1632: NA
+  UseMeans: NA
+  PathCalibration: NA
+  PathRegelKarteVBW: NA
+  PathRegelKarteQC.Z0: NA
+  PathRegelKarteQC.Z1: NA
+  PathZielwertNIST1632: NA
+classoption: landscape
+--- 
+
+
+```{r include=FALSE}
+
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt") 
+```
+
+
+```{r include=FALSE}
+# Übernahme der Parameter Liste aus Knitr
+
+# ACHTUNG: die Class "knit_param_list" lässt keine Änderung der übergebenen Paramter zu!
+myParams <- unclass(params)
+
+#Standard Einstellung für Betrieb außerhalb von Shiny
+if(myParams$Operator =="NA"){myParams$Operator <- "Dronov"}
+if(myParams$BGMethod =="NA"){myParams$BGMethod <- "DIN32645"}
+if(myParams$Alpha =="NA"){myParams$Alpha <- 0.01}
+if(myParams$QCSoll_NIST1632 =="NA"){myParams$QCSoll_NIST1632 <- 92.8}else{as.numeric(myParams$QCSoll_NIST1632)}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <-2}else{as.numeric(myParams$Significant.Digits)}
+if(myParams$BG.SAA == "NA"){myParams$BG.SAA <- T}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <-2}
+if(myParams$UseMeans == "NA"){myParams$UseMeans <- T}
+if(myParams$BG.SAA == "NA"){myParams$BG.SAA <- T}
+if(myParams$PathRegelKarteVBW == "NA"){myParams$PathRegelKarteVBW <- normalizePath(paste0(path.QCtoWrite,"/SAA_5.1.3_VBW.csv"),winslash = "\\")}
+if(myParams$PathRegelKarteQC.Z0 == "NA"){myParams$PathRegelKarteQC.Z0 <- normalizePath(paste0(path.QCtoWrite,"/SAA_5.1.3_NIST_Zelle0.csv"),winslash = "\\")}
+if(myParams$PathRegelKarteQC.Z1 == "NA"){myParams$PathRegelKarteQC.Z1 <- normalizePath(paste0(path.QCtoWrite,"/SAA_5.1.3_NIST_Zelle1.csv"),winslash = "\\")}
+if(myParams$PathZielwertNIST1632 == "NA"){myParams$PathZielwertNIST1632 <- normalizePath(paste0(path.TargetValues,"/SAA_5.1.3_Kohle_Zielwert.csv"),winslash = "\\")}
+if(myParams$PathCalibration == "NA"){myParams$PathCalibration <- normalizePath(paste0(path.Calibration,"/SAA_5.1.3_Calibration.csv"),winslash = "\\")}
+
+
+if(myParams$inFile =="NA"){myParams$inFile <- tk_choose.files(filters = matrix( c("CSV Dateien","*.csv","Alle Dateien","*.*"),
+                                                                             nrow = 2,
+                                                                             ncol = 2,
+                                                                             byrow = T,
+                                                                             dimnames = list(c("csv","All"),c("",""))))}
+
+myParams$TargetValue <- read.csv(myParams$PathZielwertNIST1632,
+                                 header = T,
+                                 stringsAsFactors = F)
+
+myParams$TargetValue$LimitBGabs <- myParams$TargetValue$LimitBG/100
+
+```
+
+
+```{r include=FALSE}
+myList <- myDMA80(myParams)
+```
+
+
+```{r include=FALSE}
+myList[["Samples"]] <- myDMA80.Smpl(df = myList$Quantified,
+                                    Smpl.filter = "^M.+?[[:digit:]]/[[:digit:]].+?")
+
+myList$Samples[["Report"]] <- myDMA80.Report(df.Smpl = myList$Samples$Samples.Average %>% select(-SD),
+                                             SigDigits = myList$Input.Parameter$Significant.Digits,
+                                             BG = myList$Input.Parameter$TargetValue$LimitBG)
+
+```
+
+
+
+```{r Split only VBWs, include=FALSE}
+myList[["QC"]] <- list("VBW.Zelle0" = myDMA80.QC(df = myList$Quantified %>% filter(Cell %in% 0),
+                                                QC.filter = "BW",
+                                                TargetValue = myList$Input.Parameter$QCSoll_NIST1632),
+                       "QC.All" = myDMA80.QC(df = myList$Quantified,
+                                             QC.filter = "^NIST.+?[[:digit:]].+?[[:lower:]]",
+                                             TargetValue = myList$Input.Parameter$QCSoll_NIST1632),
+                       "QC.Zelle0" = myDMA80.QC(df = myList$Quantified %>% filter(Cell %in% 0),
+                                                QC.filter = "^NIST.+?[[:digit:]].+?[[:lower:]]",
+                                                TargetValue = myList$Input.Parameter$QCSoll_NIST1632),
+                       "QC.Zelle1" =  myDMA80.QC(df = myList$Quantified %>% filter(Cell %in% 1),
+                                                 QC.filter = "^NIST.+?[[:digit:]].+?[[:lower:]]",
+                                                 TargetValue = myList$Input.Parameter$QCSoll_NIST1632),
+                       "QC.Zelle2" =  myDMA80.QC(df = myList$Quantified %>% filter(Cell %in% 2),
+                                                 QC.filter = "^NIST.+?[[:digit:]].+?[[:lower:]]",
+                                                 TargetValue = myList$Input.Parameter$QCSoll_NIST1632))
+```
+
+```{r WriteQC, include=FALSE}
+#### VBW ###
+if(!is.null(myList$QC$VBW.Zelle0$QC.Selected)){
+myList$QC$VBW.Zelle0[["Stored"]] <- myQCHandling_DMA80(QC_DF = myList$QC$VBW.Zelle0$QC.Selected,
+                                            Handling = "VBW",
+                                            PathToWrite = myList$Input.Parameter$PathRegelKarteVBW,
+                                            KillOld = F)
+} else{myList$QC$VBW.Zelle0[["Stored"]] <- NA}
+
+
+### QC ###
+if(!is.null(myList$QC$QC.Zelle0$QC.Selected)){
+myList$QC$QC.Zelle0[["Stored"]] <- myQCHandling_DMA80(QC_DF = myList$QC$QC.Zelle0$QC.Selected,
+                                            Handling = "QC",
+                                            PathToWrite = myList$Input.Parameter$PathRegelKarteQC.Z0,
+                                            KillOld = F)
+} else{myList$QC$QC.Zelle0[["Stored"]] <- NA}
+
+if(!is.null(myList$QC$QC.Zelle1$QC.Selected)){
+myList$QC$QC.Zelle1[["Stored"]] <- myQCHandling_DMA80(QC_DF = myList$QC$QC.Zelle1$QC.Selected,
+                                            Handling = "QC",
+                                            PathToWrite = myList$Input.Parameter$PathRegelKarteQC.Z1,
+                                            KillOld = F)
+} else{myList$QC$QC.Zelle1[["Stored"]] <- NA}
+```
+
+```{r QC Plots, include=FALSE}
+myList$QC[["Plots"]] <- list()
+
+
+myList$QC$Plots[["VBW.Zelle0"]]  <- myBlindwertkartenPlot(plotData = data.frame("Index"=myList$QC$VBW.Zelle0$Stored$ProcessTime,
+                                                                                "Value" = myList$QC$VBW.Zelle0$Stored$Hg..ng.),
+                                                          BWKrit = myList$Input.Parameter$TargetValue$LimitBGabs,
+                                                          title = "Blindwertkarte",
+                                                          yLabel = "absolute Konzentration (ng)",
+                                                          xLabel = "Messzeitpunkt")
+
+
+myList$QC$Plots[["QC.Zelle0"]]  <- myZielwertkartenPlot(plotData = data.frame("Index"=myList$QC$QC.Zelle0$Stored$ProcessTime,
+                                                                                "Value" = myList$QC$QC.Zelle0$Stored$WFR),
+                                                        Zielwert = myList$Input.Parameter$TargetValue$Zielwert,
+                                                        Unsicherheit = myList$Input.Parameter$TargetValue$Unsicherheit,
+                                                        title = "Zielwertkarte Zelle 0",
+                                                        yLabel = "Wiederfindungsrate (%)",
+                                                        xLabel = "Messzeitpunkt")
+
+myList$QC$Plots[["QC.Zelle1"]]  <- myZielwertkartenPlot(plotData = data.frame("Index"=myList$QC$QC.Zelle1$Stored$ProcessTime,
+                                                                                "Value" = myList$QC$QC.Zelle1$Stored$WFR),
+                                                        Zielwert = myList$Input.Parameter$TargetValue$Zielwert,
+                                                        Unsicherheit = myList$Input.Parameter$TargetValue$Unsicherheit,
+                                                        title = "Zielwertkarte Zelle 1",
+                                                        yLabel = "Wiederfindungsrate (%)",
+                                                        xLabel = "Messzeitpunkt")
+
+```
+
+
+```{r Speichern der Liste, include=FALSE}
+save.myList(myList)
+
+```
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "RawData"= myList$RawData,
+                  "Report" = myList$Samples$Report)
+
+
+
+
+myXLSX.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myXLSX.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = ".csv",n=2)[1],"_rEval.xlsx")
+dirsave.myList.xlsx <- paste0(myXLSX.path,myXLSX.file)
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "RawData"= myList$RawData,
+                  "Calibration" = myList$Calibration$Daten,
+                  "NG.calc" =  myOLS_BG(OLS.List = myList$Calibration$OLS,Parameter = "xNG"),
+                  "BG.Calc" =  myOLS_BG(OLS.List = myList$Calibration$OLS,Parameter = "xBG"),
+                  "Measured VBW" = myList$QC$VBW.Zelle0,
+                  "Measured QC" = myList$QC$QC.All,
+                  "Report" = myList$Samples$Report)
+                  
+                  
+suppressWarnings(myXLSX.write(writeData,dirsave.myList.xlsx,Override = F))
+
+```
+
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, echo=FALSE}
+
+kable(myList$Samples$Report, 
+      "latex", 
+      longtable = T,
+      booktabs = T, 
+      row.names = F, 
+      caption = "Konzentrationen der Proben") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+
+
+```
+
+Bestimmungsgrenze (BG) nach `r myList$Input.Parameter$BGMethod`:     `r myList$BG.Report` µg/kg
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$Filename`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+\newpage
+
+# Header
+\begin{center}
+\captionof{table}{Input Parameters}
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+Operator & `r myList$Input.Parameter$Operator`\\
+Datum& `r format(Sys.time(), format = "%d.%m.%Y")`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList`\\
+BG Methode & `r myList$Input.Parameter$BGMethod`\\
+BG aus SAA? & `r myList$Input.Parameter$BG.SAA`\\
+$\alpha$ & `r myList$Input.Parameter$Alpha`\\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits`\\
+Messdatei & \verb!`r myList$Input.Parameter$FileName`!\\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+c(NIST 1632d) & `r myList$Input.Parameter$QCSoll_NIST1632` µg/kg \\
+Zielwert NIST 1632d & `r myList$Input.Parameter$TargetValue$Zielwert` $\pm$ `r myList$Input.Parameter$TargetValue$Unsicherheit`\% \\
+Notwendige BG & `r myList$Input.Parameter$TargetValue$LimitBG` ng/L \\
+\hline
+\end{tabular}
+\end{center}
+
+\newpage
+
+## Rohdaten
+
+```{r Ausgabe der Roh Daten, echo=FALSE}
+
+Intensity_Raw <- myList$RawData %>% select(SampleName,Remark,Amount,Unit,Height,Hg..ng.,Concentration,Cell,CalFactor) 
+names(Intensity_Raw) <- c("Labels","Remark","Einwaage","Einheit","Absorbtion","Hg (ng)","Konzentration (µg/kg)","Zelle","CalFactor")
+
+kable(Intensity_Raw, "latex",longtable = T, booktabs = T, row.names = F,caption = "Rohdaten") %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+
+\newpage
+
+## Kalibrationskenndaten nach DIN 32645
+```{r echo=FALSE}
+myList$Calibration$OLS$Hg$Plot_fit
+
+```
+
+\newpage
+
+```{r  echo=FALSE}
+myList$Calibration$OLS$Hg$Plot_res
+```
+
+\newpage
+
+## Regelkarten
+```{r echo=FALSE}
+kable(myList$QC$VBW.Zelle0$Stored, "latex",longtable = T, booktabs = T, row.names = F, caption = "Blindwertkarte Zelle0") %>% kable_styling(latex_options = c("repeat_header"))
+kable(myList$QC$QC.Zelle0$Stored, "latex",longtable = T, booktabs = T, row.names = F, caption = "Zielwertkarte Zelle0") %>% kable_styling(latex_options = c("repeat_header"))
+kable(myList$QC$QC.Zelle1$Stored, "latex",longtable = T, booktabs = T, row.names = F, caption = "Zielwertkarte Zelle1") %>% kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+```{r echo=FALSE}
+print(myList$QC$Plots$VBW.Zelle0)
+```
+\newpage
+```{r echo=FALSE}
+print(myList$QC$Plots$QC.Zelle0)
+```
+\newpage
+```{r echo=FALSE}
+print(myList$QC$Plots$QC.Zelle1)
+```
+

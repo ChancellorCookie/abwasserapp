@@ -1,0 +1,455 @@
+---
+title: "iCAP Q Auswertung"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage{xcolor}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{amsmath}
+   - \usepackage{float}
+   - \usepackage{lscape}
+   - \newcommand{\blandscape}{\begin{landscape}}
+   - \newcommand{\elandscape}{\end{landscape}}
+   
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 3.5
+    fig_width: 7.5
+    
+classoption: landscape
+
+params:
+  Operator: NA
+  BGMethod: NA
+  Alpha: NA
+  inFile: NA
+  PipettenList: NA
+  Significant.Digits: NA
+  QCSoll_SM28E: NA
+  QCSoll_MerckVI: NA 
+  UseMeans: NA
+  UseIntCorr: NA
+  
+--- 
+
+
+```{r include=FALSE}
+# Load User-Defined Functions ----
+
+## Directory Structure  ----
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+### Initialise Packages ----
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Die Installation eines neuen Package MUSS zwingend über das Terminal passieren, 
+# da das Package ansonsten nicht in der Shiny-Server Version verfügbar ist
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Beispuiel zur Installation des "shiny" Package über das Terminal
+# sudo su - -c "R -q -e \"install.packages('shiny', repos='http://cran.rstudio.com/')\""
+
+
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# Beim Hinzufügen neuer Dateien ins R_Viewer Verzeichnis von Shiny-Server, 
+# müssen zwingend die Rechte neu vergeben werden, da der Ubuntu Benutzer "shiny"
+# sonst keinen Zugriff bei der der Ausführung erhält und somit eine Fehlermeldung 
+# im Browser erscheint
+# sudo chmod -R 777 /srv/shiny-server/myShinyApps/R_Viewer/
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+
+myPackageList <- c("shiny",
+                   "shinyFiles",
+                   "shinydashboard",
+                   "shinyjs",
+                   "shinyalert",
+                   "dplyr",
+                   "stringr",
+                   "DT",
+                   "rhandsontable",
+                   "tools",
+                   "data.table",
+                   "ggplot2",
+                   "RColorBrewer",
+                   "tcltk",
+                   "tcltk2",
+                   "rChoiceDialogs",
+                   "openssl")
+
+MultiPackageInstall(myPackageList)
+```
+
+```{r Parameter Input aus Shiny, include=FALSE}
+# Übernahme der Parameter Liste aus Knitr
+
+# ACHTUNG: die Class "knit_param_list" lässt keine Änderung der übergebenen Paramter zu!
+myParams <- unclass(params)
+
+#Standard Einstellung für Betrieb außerhalb von Shiny
+if(myParams$Operator =="NA"){myParams$Operator<-"Dronov"}
+if(myParams$BGMethod =="NA"){myParams$BGMethod<-"Kaiser"} # "DIN32645"  "Leer"  "Kaiser"
+if(myParams$Alpha =="NA"){myParams$Alpha<-0.01}
+if(myParams$PipettenList =="NA"){myParams$PipettenList <- c(1067,1097,1099)}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <- 2}
+if(myParams$QCSoll_SM28E =="NA"){myParams$QCSoll_SM28E <- 50}else{as.numeric(myParams$QCSoll_SM28E)}
+if(myParams$QCSoll_MerckVI =="NA"){myParams$QCSoll_MerckVI <- 50}else{as.numeric(myParams$QCSoll_MerckVI)}
+if(myParams$UseMeans == "NA"){myParams$UseMeans <-T}
+if(myParams$UseIntCorr == "NA"){myParams$UseIntCorr <-T}
+if(myParams$inFile =="NA"){myParams$inFile <- tk_choose.files(filters = matrix( c("CSV Dateien","*.csv","Alle Dateien","*.*"),
+                                         nrow = 2,
+                                         ncol = 2,
+                                         byrow = T,
+                                         dimnames = list(c("All", "csv"),c("",""))))}
+
+```
+
+```{r Ausführung des Datenimports, include=FALSE}
+
+#myList <- suppressWarnings(readCSV_iCAPQ(myParams$inFile))
+myPreList <- suppressWarnings(readCSV_iCAPQ_short(myParams$inFile)) 
+```
+
+```{r Restrukturierung der Liste, echo=TRUE, include=FALSE }
+myList <- my.eQuant.myList(myParams = myParams)
+```
+
+```{r Output for LAGA Project, include=FALSE}
+conc <- myList$Concentration$Conc.multiply.VF
+
+Elements <- myList$Calibration$Info$Elements
+Analytes <- myList$Calibration$Info$Analytes
+Units <- myList$Calibration$Info$Units
+BGs <- myOLS_BG(myList$Calibration$OLS,"xBG")
+
+new.names <- paste0(Elements," (",Units,")")
+names(BGs) <- new.names
+new.names2 <- c("Index","Labels",new.names)
+names(conc) <- new.names2
+
+if (any(str_detect(Elements,"Pb"))) {
+  ElemMean <- myElementMean(conc,"Pb",new.names) # Compute the mean of same Masses
+  conc.Sum <- conc[c(T,T,!grepl(pattern = "Pb",x = new.names))] %>% merge(ElemMean,c("Index","Labels"))
+}else{
+  conc.Sum <- conc
+}
+
+Analytes.Sum <- names(conc.Sum)
+
+#------ 
+## Sortierung für die Zusammenfassung für Christine
+#SortOrder <- c("As","Sb","Pb","Cd","Cr","Cu","Mo","Ni","V","W","Zn","Al","Ca","Fe")
+SortOrder <- unique(Elements)
+#------
+
+SortedAnalytes <- c()
+for (a in SortOrder) {
+ SortedAnalytes <- c(SortedAnalytes, Analytes.Sum[str_detect(Analytes.Sum,a)])
+}
+
+conc.Sum <- conc.Sum[c("Index","Labels",SortedAnalytes)]
+conc.Sum <- myConcFinal(conc.Sum,SortedAnalytes,2,BGs)
+
+conc.Sum <- myList$Header %>% select(Index,Labels,`Dilution Factor`) %>% merge(conc.Sum,by = c("Index","Labels"))
+conc.Sum <- conc.Sum[order(conc.Sum$Index),]
+
+myList$Concentration[["Conc.LAGA"]] <- conc.Sum
+
+
+```
+
+
+
+```{r Speichern der Liste, include=FALSE}
+myRDATA.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myRDATA.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.RData")
+dirsave.myList.RData <- paste0(myRDATA.path,myRDATA.file)
+
+save(myList,file = dirsave.myList.RData)
+```
+
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+myXLSX.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myXLSX.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.xlsx")
+dirsave.myList.xlsx <- paste0(myXLSX.path,myXLSX.file)
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "Header"= myList$Header,
+                  "Conc.LAGA.Sorted" = myList$Concentration$Conc.LAGA,
+                  "Calibration" = data.frame("Analyt" = myList$Calibration$Info$Analytes,
+                                             "b0" = signif(myOLS_BG(myList$Calibration$OLS,"b0"),4),
+                                             "b1" = signif(myOLS_BG(myList$Calibration$OLS,"b1"),4),
+                                             "R^2" = signif(myOLS_BG(myList$Calibration$OLS,"R"),5),
+                                             "NG" = signif(myOLS_BG(myList$Calibration$OLS,"xNG"),3),
+                                             "BG" = signif(myOLS_BG(myList$Calibration$OLS,"xBG"),3),
+                                             "Einheit" = myList$Calibration$Info$Units,
+                                             "Int.Std Zuordn." = myList$Raw.Data$eQuant$IntStd$Assignment$Standards,
+                                             stringsAsFactors = F),
+                  "Std.Conc" = myList$Raw.Data$eQuant$Std.Concentration,
+                  "RawData"= myList$Raw.Data$eQuant$Raw$Raw.Intensity$Data,
+                  "Raw.Average" =myList$Raw.Data$eQuant$Raw$Raw.Average$Data,
+                  "IntStd.Average" = myList$Raw.Data$eQuant$IntStd$Raw.Average,
+                  "IntStd.Factors" = myList$Raw.Data$eQuant$IntStd$Average.Factors,
+                  "Corr.Average" = myList$Raw.Data$eQuant$Corrected.Data$Corr.Average,
+                  "Raw.Conc" = myList$Concentration$Concentration,
+                  "Final.Conc" = myList$Concentration$Conc.Final)
+                  
+
+suppressWarnings(myXLSX.write(writeData,dirsave.myList.xlsx))
+
+```
+
+
+```{r Berechnung der Probenkonzentrationen, include=FALSE}  
+  ### Zwischen welchen Standards liegen die Probensignale?
+ 
+# myList[["QC"]] <- list() # hier kommt ein System zum lesen und schreiben der QC's in CSVs. Siehe Pt-Analytik
+```
+
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+```{r Definition einer gemeinsamen Spaltenanzahl,include=FALSE}
+
+
+## Einschränkung für Spaltenanzahl der Tabellen im Report
+maxCols <- 11
+
+
+```
+\small
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, results='asis', echo=FALSE}
+
+  myKabel(df = myList$Concentration$Conc.LAGA,
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen in den Proben")
+
+```
+
+Bestimmungsgrenzen (BG) wurde nach `r myList$Input.Parameter$BGMethod` ermittelt und sind im Kapitel "Bewertung der Kalibration" hinterlegt.
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+
+\newpage
+
+# Header
+
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+Operator & `r myList$Input.Parameter$Operator`\\
+Datum& `r format(Sys.time(), format = "%d.%m.%Y")`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList`\\
+BG Methode & `r myList$Input.Parameter$BGMethod`\\
+$\alpha$ & `r myList$Input.Parameter$Alpha`\\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits`\\
+Messdatei & \verb!`r myList$Input.Parameter$FileName`!\\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+Interne Standard Korrektur? & `r myList$Input.Parameter$UseIntCorr` \\
+Nur Mittelwerte betrachten? & `r myList$Input.Parameter$UseMeans`\\
+\hline
+\end{tabular}
+
+\newpage
+
+# SampleList
+```{r echo=FALSE}
+kable(myList$Header %>% select(-Index,-`Internal Standard`,-Standard,-Evaluate,-`Special Blank`), 
+      "latex",
+      longtable = T, 
+      booktabs = T, 
+      row.names = F,caption = "Samplelist") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+\newpage
+
+# Roh-Intensitäten (CPS)
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Raw.Data$eQuant$Raw$Raw.Average$Data %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Gemessene Intensitäten (CPS)")
+```
+
+\newpage
+
+\blandscape
+
+## Interner Standard Zuordnung
+
+```{r echo=FALSE}
+kable(myList$Raw.Data$eQuant$IntStd$Assignment , "latex",longtable = T, booktabs = T, row.names = F,caption = "Zuordnung der internen Standards") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Interner Standard Faktoren
+```{r echo=FALSE}
+kable(myList$Raw.Data$eQuant$IntStd$Average.Factors %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F,caption = "Interne Standard Faktoren") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+\elandscape
+
+# Korrigierte Intensitäten (CPS)
+
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Raw.Data$eQuant$Corrected.Data$Corr.Average %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Mittels internem Standard korrigierte und gemittelte Intensitäten")
+```
+
+\newpage
+
+# Konzentrationen (ungefiltert)
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Concentration %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Konzentrationen anhand der Intensitäten")
+```
+
+\newpage
+
+# Verwendete Kalibrationspunkte 1-x
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$UsedStandards %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Verwendete Kalibrationspunkte")
+```
+
+\newpage
+
+## Filter von:   c < BG  <=>  c = 0
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.less.BG %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit \"< BG\" Filter")
+```
+
+\newpage
+
+## Einberechnung der Verdünnungsfaktoren
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.multiply.VF %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit einberechnetem Verdünnungsfaktor")
+```
+
+\newpage
+
+## Bereinigte Konzentrationen
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.Final %>% select(-Index),
+        maxCols = 8,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit einberechnetem Verdünnungsfaktor")
+```
+
+
+\newpage
+
+## Bewertung der Kalibration (`r myList$Input.Parameter$BGMethod`)
+```{r ,results='asis',echo=FALSE}
+if (myList$Input.Parameter$BGMethod == "Kaiser") {
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","n","sl","yk","xNG","xEG","xBG")
+}else if(myList$Input.Parameter$BGMethod == "DIN32645"){
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","yk","xNG","xEG","xBG")
+}else if(myList$Input.Parameter$BGMethod == "Leer"){
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","sl","yk","xNG","xEG","xBG")
+}
+
+Calibration.Summary <- myOLS_BG(myList$Calibration$OLS,Parameter = "b0")
+
+for (p in Calibration.Parameter[-1]) {
+  Calibration.Summary <- rbind(Calibration.Summary,signif(as.numeric(myOLS_BG(myList$Calibration$OLS,Parameter = p)),4),deparse.level=1)
+}
+
+Calibration.Summary %<>% as.data.frame()
+row.names(Calibration.Summary) <- Calibration.Parameter
+
+
+myKabel(df = Calibration.Summary,
+        maxCols = 8,
+        repeatCols = NULL,
+        row.names = T,
+        caption = "Kalibrationskenngrößen")
+```
+
+
+\blandscape
+
+```{r echo=FALSE}
+
+for (v in myList$Calibration$Info$Analytes) {
+  subList <- myList$Calibration$OLS[[v]]
+  
+  print(subList$Plot_fit)
+  print(myList$Calibration$Cali.Plots[[v]])
+  print(subList$Plot_res)
+}
+```
+
+\elandscape
+
+
+

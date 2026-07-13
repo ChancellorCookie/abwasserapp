@@ -1,0 +1,340 @@
+---
+title: "iCAP Q Auswertung"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+   - \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage{xcolor}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+   - \usepackage{amsmath}
+   - \usepackage{float}
+   - \usepackage{lscape}
+   - \newcommand{\blandscape}{\begin{landscape}}
+   - \newcommand{\elandscape}{\end{landscape}}
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 3.5
+    fig_width: 7.5
+classoption: landscape
+params:
+  myList: NA
+
+--- 
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+
+
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+#Unterfunktionen werden geladen
+
+# Directory Structure
+path.root <- normalizePath(getwd(),winslash = "\\")
+path.QC <- normalizePath(paste0(path.root,"/QC"),winslash = "\\")
+path.TargetValues <- normalizePath(paste0(path.QC,"/Akzeptanzkriterien"),winslash = "\\")
+path.QCtoWrite <- normalizePath(paste0(path.QC,"/Regelkarten"),winslash = "\\")
+path.Functions <- normalizePath(paste0(path.root,"/Functions"),winslash = "\\")
+path.Calibration <- normalizePath(paste0(path.root,"/Calibration"),winslash = "\\")
+
+
+# Regular Expression "^func.*.R$" defines that only R-Files beginning by "func" and ending with ".R" are loaded
+funcs <- normalizePath(dir(path.Functions,"^func.*.R$",full.names = T))
+for (i in funcs) {
+  source(i,encoding = 'UTF-8')
+}
+
+#removes temporary *.cpt files in rmd-File containing directory
+myTempFileRemove(path.root,FilePattern = ".cpt")
+
+myList <- params$myList
+#load("~/Schreibtisch/R_Viewer/SM_myList.RData")
+
+## Einschränkung für Spaltenanzahl der Tabellen im Report
+maxCols <- 7
+``` 
+
+
+##  `r myList$Input.Parameter$FileName`
+
+Die Messung erfolgte am `r myList$Input.Parameter$Date`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+"\verb!`r myList$Input.Parameter$FilePath`!" 
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_rEval.xlsx").
+
+```{r Ausgabe der Daten, results='asis', echo=FALSE}
+
+# Function to track relevant Analytes in a sapply loop
+relevantIndex <- as.logical(
+  rowSums(
+    sapply(myList$Input.Parameter$Masse, function(i){
+      grepl(i,myList$Calibration$Info$Analytes)}))) 
+# If no Masses were defined in myList$Input.Parameter, all Analytes pass are set as relevantIndex
+
+relevantAnalytes <- myList$Calibration$Info$Analytes[relevantIndex]
+relevantElements <- myList$Calibration$Info$Elements[relevantIndex]
+relevantUnits <- myList$Calibration$Info$Units[relevantIndex]
+
+Analyte <- paste0(relevantElements," (",relevantUnits,")")
+
+conc_clean <- myList$Concentration$Conc.Final %>% 
+  filter(str_detect(Labels,"^M")) %>% 
+  select(Labels,relevantAnalytes) %>% 
+  `names<-`(.,c("Labels",Analyte))
+
+# # AlphaNumerische Sortierung!
+conc_clean <- conc_clean[order(conc_clean$Labels),] 
+if (nrow(conc_clean) == 0) {
+  kable(data.frame("Label" = c("No data availabel")), "latex", longtable = T,booktabs = T, row.names = F, caption = "Konzentrationen der Proben") %>% kable_styling(latex_options = c("repeat_header"))
+} else {
+  myKabel(df = conc_clean,
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen der Proben")
+}
+
+#kable(conc_clean, "latex", longtable = T,booktabs = T, row.names = F, caption = "Konzentrationen der Proben") %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+Bestimmungsgrenzen (BG) wurde nach `r myList$Input.Parameter$BGMethod` ermittelt und sind im Kapitel "Bewertung der Kalibration" hinterlegt.
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Input.Parameter$FileName`!}
+\chead{}
+\rhead{ZE1/`r myList$Input.Parameter$Operator` `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Input.Parameter$FilePath`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+
+\vspace*{\fill}
+`r format(Sys.time(), format = "%d.%m.%Y")` 
+
+ZE1/`r myList$Input.Parameter$Operator`
+
+\newpage
+
+# Header
+
+\begin{tabular}{ll}
+\hline
+Input Parameter & \\
+\hline
+Operator & `r myList$Input.Parameter$Operator`\\
+Datum& `r format(Sys.time(), format = "%d.%m.%Y")`\\
+Verwendete Pipetten & `r myList$Input.Parameter$PipettenList %>% pull()`\\
+BG Methode & `r myList$Input.Parameter$BGMethod`\\
+$\alpha$ & `r myList$Input.Parameter$Alpha`\\
+Bericht Masse & `r myList$Input.Parameter$Masse`\\
+Signifikante Stellen & `r myList$Input.Parameter$Significant.Digits`\\
+Messdatei & \verb!`r myList$Input.Parameter$FileName`!\\
+Pfad & \verb!`r myList$Input.Parameter$FilePath`!\\
+Messdatum & `r myList$Input.Parameter$Date`\\
+Interne Standard Korrektur? & `r myList$Input.Parameter$UseIntCorr` \\
+Nur Mittelwerte betrachten? & `r myList$Input.Parameter$UseMeans`\\
+\hline
+\end{tabular}
+
+\newpage
+
+# SampleList
+```{r echo=FALSE}
+kable(myList$Header %>% select(-Index,-`Internal Standard`,-Standard,-Evaluate,-`Special Blank`), 
+      "latex",
+      longtable = T, 
+      booktabs = T, 
+      row.names = F,caption = "Samplelist") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+
+\newpage
+
+# Roh-Intensitäten (CPS)
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Raw.Data$eQuant$Raw$Raw.Average$Data %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Gemessene Intensitäten (CPS)")
+
+#kable(myList$Raw.Data$eQuant$Raw$Raw.Average$Data %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+ # kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+\blandscape
+
+## Interner Standard Zuordnung
+
+```{r echo=FALSE}
+kable(myList$Raw.Data$eQuant$IntStd$Assignment , "latex",longtable = T, booktabs = T, row.names = F,caption = "Zuordnung der internen Standards") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Interner Standard Faktoren
+```{r echo=FALSE}
+kable(myList$Raw.Data$eQuant$IntStd$Average.Factors %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F,caption = "Interne Standard Faktoren") %>% 
+  kable_styling(latex_options = c("repeat_header"))
+```
+
+\elandscape
+
+# Korrigierte Intensitäten (CPS)
+
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Raw.Data$eQuant$Corrected.Data$Corr.Average %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Mittels internem Standard korrigierte und gemittelte Intensitäten")
+# kable(myList$Raw.Data$eQuant$Corrected.Data$Corr.Average %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+# Konzentrationen (ungefiltert)
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Concentration %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen anhand der Intensitäten")
+
+# kable(myList$Concentration$Concentration %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+# Verwendete Kalibrationspunkte 1-x
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$UsedStandards %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Verwendete Kalibrationspunkte")
+
+# kable(myList$Concentration$UsedStandards %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Filter von:   c < BG  <=>  c = 0
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.less.BG %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit \"< BG\" Filter")
+
+# kable(myList$Concentration$Conc.less.BG %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+
+```
+
+\newpage
+
+## Einberechnung der Verdünnungsfaktoren
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.multiply.VF %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit einberechnetem Verdünnungsfaktor")
+
+# kable(myList$Concentration$Conc.multiply.VF %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+```
+
+\newpage
+
+## Bereinigte Konzentrationen
+```{r ,results='asis',echo=FALSE}
+myKabel(df = myList$Concentration$Conc.Final %>% select(-Index),
+        maxCols = maxCols,
+        repeatCols = "Labels",
+        caption = "Konzentrationen mit einberechnetem Verdünnungsfaktor")
+
+# kable(myList$Concentration$Conc.Final %>% select(-Index), "latex",longtable = T, booktabs = T, row.names = F) %>% 
+#   kable_styling(latex_options = c("repeat_header"))
+```
+
+
+\newpage
+
+## Bewertung der Kalibration (`r myList$Input.Parameter$BGMethod`)
+```{r ,results='asis',echo=FALSE}
+if (myList$Input.Parameter$BGMethod == "Kaiser") {
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","n","sl","yk","xNG","xEG","xBG")
+}else if(myList$Input.Parameter$BGMethod == "DIN32645"){
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","yk","xNG","xEG","xBG")
+}else if(myList$Input.Parameter$BGMethod == "Leer"){
+  Calibration.Parameter <- c("b0","b1","sb0","sb1","R","k","m","n","Alpha","ta","ta/2","sl","yk","xNG","xEG","xBG")
+}
+
+Calibration.Summary <- myOLS_BG(myList$Calibration$OLS,Parameter = "b0")
+
+for (p in Calibration.Parameter[-1]) {
+  Calibration.Summary <- rbind(Calibration.Summary,signif(as.numeric(myOLS_BG(myList$Calibration$OLS,Parameter = p)),4),deparse.level=1)
+}
+
+Calibration.Summary %<>% as.data.frame()
+row.names(Calibration.Summary) <- Calibration.Parameter
+
+
+myKabel(df = Calibration.Summary,
+        maxCols = maxCols,
+        repeatCols = NULL,
+        row.names = T,
+        caption = "Kalibrationskenngrößen")
+
+# kable(Calibration.Summary, "latex",longtable = T, booktabs = T, row.names = F) %>% kable_styling(latex_options = c("repeat_header"))
+
+```
+
+
+\blandscape
+
+```{r echo=FALSE}
+
+for (v in myList$Calibration$Info$Analytes) {
+  subList <- myList$Calibration$OLS[[v]]
+  
+  print(subList$Plot_fit)
+  print(myList$Calibration$Cali.Plots[[v]])
+  print(subList$Plot_res)
+}
+
+
+```
+
+\elandscape
+

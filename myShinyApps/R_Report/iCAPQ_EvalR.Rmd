@@ -1,0 +1,343 @@
+---
+title: "iCAP Q Auswertung"
+author: "Forschungsanalytik und Speziesanalytik"
+header-includes:
+- \usepackage{booktabs}
+   - \usepackage{longtable}
+   - \usepackage{cprotect}
+   - \usepackage{verbatim}
+   - \usepackage{fancyhdr}
+   - \usepackage{caption}
+   - \usepackage[utf8]{inputenc}
+   - \usepackage[german]{babel}
+   - \usepackage[T1]{fontenc}
+output: 
+  pdf_document:
+
+    fig_caption: yes
+    fig_height: 4
+    fig_width: 8.5
+params:
+  Operator: NA
+  BGMethod: NA
+  Alpha: NA
+  inFile: NA
+  PipettenList: NA
+  Significant.Digits: NA
+  QCSoll_SM28E: NA
+  QCSoll_MerckVI: NA 
+  UseMeans: NA
+  UseIntCorr: NA
+  
+--- 
+
+
+```{r setup, include=FALSE}
+# Dieser Chunk wird zwar ausgeführt, aber nicht im Notebook angezeigt. Hier steht der Header für das Skript
+
+# Working Directory
+# Der Ordner, der die Messdaten enthällt
+#setwd("//10.1.8.210/gc-ms-fid/Michail/R Projects/iCAPQ DataEval")
+#getwd() # gibt den Working Directory als String zurück
+
+# Notwendige Packages
+
+require(dplyr)
+require(tidyr)
+require(magrittr)
+require(stringr)
+require(ggplot2)
+require(outliers)
+require(RColorBrewer)
+require(kableExtra)
+require(xlsx)
+require(DT)
+require(tcltk2)
+
+source('func_csvImport_iCAPQ_struct.R', encoding = 'UTF-8') # Datei, die die Import Funktion beinhaltet
+source('func_csvImport_iCAPQ.R', encoding = 'UTF-8') # Datei, die die Import Funktion beinhaltet
+source('func_dfGather_iCAPQ.R', encoding = 'UTF-8') # Datei, die die Sortier-Funktion beinhaltet
+source("func_myOutlier.R")  # Datei, die Funktion zur Detektion von Ausreißern beinhaltet
+source("func_myCaliGraph.R") # Datei, die Funktion zur Darstellung der Kalibration beinhaltet
+source("func_myLinReg.R") # Datei, die Funktion zur Berechnung der Linearen Regression beinhaltet
+source("func_myBEN_DIN.R")
+source('func_myBEN_DIN_Arbeitsversion.R')
+source('func_mySIUnits.R', encoding = 'UTF-8')
+source('func_myNAall.R')
+source('func_AddNameIfNA.R', encoding = 'UTF-8')
+source('func_myUnitsFormat.R', encoding = 'UTF-8')
+source('func_csvImport_ICAPQ_verkürtzt.R')
+source('func_myiCAPQ_RawDataExtraction.R')
+source('func_myInternalStandardFactors.R')
+source('func_myIntStdAssignment.R', encoding = 'UTF-8')
+source('func_mySmplCaliAssign.R')
+source('func_myConcentration.R', encoding = 'UTF-8')
+source('func_myeQuantAverage.R', encoding = 'UTF-8')
+source('func_myMean.R')
+source('func_NAdrop.R')
+source('func_myInternalCorrection.R')
+source('func_myConcentration.Evaluation.R', encoding = 'UTF-8')
+source('func_myCaliGraph_List.R', encoding = 'UTF-8')
+source('func_myOLS.R', encoding = 'UTF-8')
+source('func_myXLSX_write.R')
+source('func_myOLS_BG.R')
+source('func_myConcLessBG.R')
+source('func_myConcMultiplyVF.R')
+source('func_myConcFinal.R')
+source('func_myElementMean.R')
+source('func_myCaliEval.R')
+
+```
+
+
+```{r Parameter Input aus Shiny, include=FALSE}
+# Übernahme der Parameter Liste aus Knitr
+
+# ACHTUNG: die Class "knit_param_list" lässt keine Änderung der übergebenen Paramter zu!
+myParams <- unclass(params)
+
+#Standard Einstellung für Betrieb außerhalb von Shiny
+if(myParams$Operator =="NA"){myParams$Operator<-"Dronov"}
+if(myParams$BGMethod =="NA"){myParams$BGMethod<-"DIN32645"}
+if(myParams$Alpha =="NA"){myParams$Alpha<-0.01}
+if(myParams$PipettenList =="NA"){myParams$PipettenList <- c(1067,1097,1099)}
+if(myParams$Significant.Digits == "NA"){myParams$Significant.Digits <- 2}
+if(myParams$QCSoll_SM28E =="NA"){myParams$QCSoll_SM28E <- 50}else{as.numeric(myParams$QCSoll_SM28E)}
+if(myParams$QCSoll_MerckVI =="NA"){myParams$QCSoll_MerckVI <- 50}else{as.numeric(myParams$QCSoll_MerckVI)}
+if(myParams$UseMeans == "NA"){myParams$UseMeans <-T}
+if(myParams$UseIntCorr == "NA"){myParams$UseIntCorr <-T}
+if(myParams$inFile =="NA"){myParams$inFile <- tk_choose.files(filters = matrix( c("CSV Dateien","*.csv","Alle Dateien","*.*"),
+                                                                             nrow = 2,
+                                                                             ncol = 2,
+                                                                             byrow = T,
+                                                                             dimnames = list(c("csv","All"),c("",""))))}
+
+```
+
+```{r Ausführung des Datenimports, include=FALSE}
+
+#myList <- suppressWarnings(readCSV_iCAPQ(myParams$inFile))
+myPreList <- suppressWarnings(readCSV_iCAPQ_short(myParams$inFile)) 
+```
+
+```{r Restrukturierung der Liste, echo=TRUE, include=FALSE }
+myList <- iCAPQ_eQuant(myPreList,myParams)
+```
+
+```{r Berechnung der Mittelwerte aus den Wiederholungsmessungen, include=FALSE}
+#myList$eQuant[["Raw.Outlier"]] <- myeQuantAverage(myList$eQuant$Raw$Raw.Intensity$Data)
+## Ausreißertest funtioniert noch nicht richtig
+```
+
+
+```{r Korrektur mittels internem Standard, include=FALSE}
+myList$eQuant[["Corrected.Data"]] <- myInternalCorrection(myList)
+```
+
+
+```{r Berechnung der Konzentration und OLS, include=FALSE}
+myList <- myConcentration.Evaluation(myList)
+```
+
+
+```{r Speichern der Liste, include=FALSE}
+myRDATA.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myRDATA.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.RData")
+dirsave.myList.RData <- paste0(myRDATA.path,myRDATA.file)
+
+save(myList,file = dirsave.myList.RData)
+```
+
+
+```{r Schreiben der Daten in ein Excel Workbook, include=FALSE}
+# Pfad zum speichern wird dynamisch aus der gelesenen Datei erstellt 
+
+myXLSX.path <- gsub(basename(myList$Input.Parameter$inFile),"",myList$Input.Parameter$inFile)
+myXLSX.file <- paste0(str_split_fixed(string = basename(myList$Input.Parameter$inFile),pattern = "[.]",n=2)[1],"_rEval.xlsx")
+dirsave.myList.xlsx <- paste0(myXLSX.path,myXLSX.file)
+
+writeData <- list("InputParameter"= myList$Input.Parameter,
+                  "Header"= myList$Header,
+                  "Final.Conc" = myList$eQuant$Evaluation$Conc.Final,
+                  "RawData"= myList$Raw.Data,
+                  "Raw.Average" =myList$eQuant$Raw$Raw.Average$Data,
+                  "IntStd.Average" = myList$eQuant$IntStd$Raw.Average,
+                  "IntStd.Factors" = myList$eQuant$IntStd$Average.Factors,
+                  "IntStd.Assignment" = myList$eQuant$IntStd$Assignment,
+                  "Corr.Average" = myList$eQuant$Corrected.Data$Corr.Average,
+                  "Std.Conc" = myList$eQuant$Std.Concentration,
+                  "BG.Calc" =  myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = "xBG"),
+                  "NG.calc" =  myOLS_BG(myList$eQuant$Calibration$OLS,Parameter = "xNG"),
+                  "Raw.Conc" = myList$eQuant$Evaluation$Concentration,
+                  "BG.Conc" = myList$eQuant$Evaluation$Conc.less.BG,
+                  "VF.Conc" = myList$eQuant$Evaluation$Conc.multiply.VF)
+
+
+suppressWarnings(myXLSX.write(writeData,dirsave.myList.xlsx))
+```
+
+
+
+```{r Qualitätskontrolle, include=FALSE}  
+  #### Hier werden die QC Proben ausgewertet und die Regelkarten geführt
+ 
+# myList[["QC"]] <- list() 
+```
+
+
+```{r Kommentar, eval=FALSE, include=FALSE}
+############################################
+# Ab hier erfolgt der Bericht für Pt-Gesamt
+############################################
+```
+
+##  `r myList$Report$Filename`
+
+Die Messung erfolgte am `r myList$`.
+Die Rohdaten sind hinterlegt im Ordner 
+
+\footnotesize "\verb!`r myList$Report$Path`!"
+
+sowie zusätzlich eine Excel-Datei mit den Zwischenergebnissen (Dateiendung "_rEval.xlsx").
+
+\pagenumbering{gobble} `r # Keine Seitenzahlen beim kompilieren mit LaTeX`
+\pagestyle{fancy}
+\cprotect\lhead{\verb!`r myList$Report$Filename`!}
+\chead{}
+\rhead{ZE1/Dronov `r format(Sys.time(), format = "%d.%m.%Y")`}
+\cprotect\lfoot{\footnotesize \verb!`r myList$Report$Path`!}
+\cfoot{}
+\rfoot{}
+\renewcommand{\headrulewidth}{0.4pt}
+\renewcommand{\footrulewidth}{0.4pt}
+
+# Intensitäten
+## Rohdaten
+### Gemittelte Daten der Messrechner-Software  
+```{r Ausgabe der Roh Daten, echo=FALSE}
+kableData <- cbind(
+      myList$Header %>% select(Probenname,Messwiederh.),
+      myList$Measured$Means %>% select(-Index))
+if(myList$IntStd$Perform.IntStd){
+  kableData <- cbind(
+    kableData,
+    myList$IntStd$Means %>% select(-Index))}
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+### Nalimov-Ausreißertest, Mittelwerte, Interner Standard Korrektur
+```{r Ausgabe nach Ausreißerkorrektur, echo=FALSE}
+kableData <- 
+  cbind(
+      myList$Header %>% select(Probenname),
+      myList$Measured$Corrected.Means %>% select(-Index))
+
+  if(myList$IntStd$Perform.IntStd){
+  kableData <- cbind(
+    kableData,
+    myList$IntStd$Int.Corr.Factors %>% select(-Index))}
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+
+```
+
+### Auswahl der Standards 1-x
+```{r Ausgabe der verwendeten Standards, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Number.Used.Standards %>% select(-Index))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+### Ungefilterte Konzentrationen (`r myList$Calibration$Unit`)
+```{r Ausgabe der ungefilteren Konzentrationen, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Concentration %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Eliminierung von c < Bestimmungsgrenzen nach `r myList$Calibration$Bestimmungsgrenze.Methode`  (`r myList$Calibration$Unit`)
+```{r Filter kleiner Bestimmungsgrenze, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    signif(x = myList$Evaluation$Kleiner.Bestimmungsgrenze %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Einberechnung der Verdünnungsfaktoren (`r myList$Calibration$Unit`)
+```{r Einberechnung der Verdünnungsfaktoren, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname,KorrFaktor),
+    signif(x = myList$Evaluation$Mal.Verd.Faktor %>% select(-Index),
+           digits = 4))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Konzentrationen in (`r myList$Units[1]`)
+```{r Report Konzentrationen, echo=FALSE}
+kableData <- 
+  cbind(
+    myList$Header %>% select(Probenname),
+    myList$Evaluation$Concentration.Final %>% select(-Index))
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+\newpage
+
+# Kalibrationen
+
+### Bestimmungsgrenzen nach `r myList$Calibration$Bestimmungsgrenze.Methode` (`r myList$Calibration$Unit`)
+```{r Ausgabe der Bestimmungsgrenzen, echo=FALSE}
+kableData <- 
+  myList$Evaluation$Betimmungsgrenzen
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+### Konzentrationen der Standards (`r myList$Calibration$Unit`)
+```{r Ausgabe der Definierten Standardkonzentration, echo=FALSE}
+kableData <- 
+ myList$Calibration$Definition
+
+kable(kableData,"latex", booktabs = T, row.names = F) %>% 
+  kable_styling(latex_options = c("striped", "scale_down"))
+```
+
+
+\newpage
+
+# Kalibrationen
+```{r Calibration Graphen, echo=FALSE}
+
+for (i in 1:length(myPlots)) {
+  print(myPlots[[i]])
+}  
+
+```
+
+
+
