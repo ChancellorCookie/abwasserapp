@@ -1281,7 +1281,8 @@
               #qc <- names(lists$myList[["QC"]][i])
 
               writeData[[names(lists$myList[["QC"]][i])]] <- list(lists$myList[["QC"]][[i]][["QC.Table"]])
-  }
+            }
+          }
           
 
         } else if(input$dropDown.System == "tQuant (MS)"){
@@ -1798,6 +1799,7 @@
         
 
       })
+    }
   }
 
 
