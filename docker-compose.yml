@@ -23,6 +23,8 @@ services:
       - ./data/R_Viewer/Platin_Gesamt:/srv/shiny-server/myShinyApps/R_Viewer/Platin\ Gesamt
       - ./data/R_Viewer/Bromid_Bromat:/srv/shiny-server/myShinyApps/R_Viewer/Bromid\ Bromat
       - ./data/R_Viewer/gc-ms-fid:/srv/shiny-server/myShinyApps/R_Viewer/gc-ms-fid
+      # CIFS-Share (read-only Messdaten)
+      - ./data/R_Viewer/Upload:/srv/shiny-server/myShinyApps/R_Viewer/Upload:ro
       # Log- und Nutzer-Dateien
       - ./data/R_Viewer/R_Viewer.usr:/srv/shiny-server/myShinyApps/R_Viewer/R_Viewer.usr
       - ./data/R_Viewer/R_Viewer.pw:/srv/shiny-server/myShinyApps/R_Viewer/R_Viewer.pw

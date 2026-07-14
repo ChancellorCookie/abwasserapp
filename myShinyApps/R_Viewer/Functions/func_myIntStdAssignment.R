@@ -104,7 +104,7 @@ myIntStdAssignment_OES <- function(ExtCal.which.Analytes,IntStd.which.Standards)
       
       assigned <- rep(Standards[["Analytes"]],nrow(Analytes))
       
-    } else if (nrow(Standards) > 1 && nrow(Standards) < 5){
+      } else if (nrow(Standards) > 1){
       for (i in 1:nrow(Analytes)) { # jede Analytmasse einzeln abfragen
         
         # Definition der Methode, der der Standard entsprechen muss
@@ -114,19 +114,14 @@ myIntStdAssignment_OES <- function(ExtCal.which.Analytes,IntStd.which.Standards)
         # Methode Axial oder Radial
         # Ordnung < 300 oder > 300
         
-        # Aufteilung der Analyten in maximal 4 Gruppen
-        
-        # Nur Order Spalte der Standards, deren Methode mit der des Analyten übereinstimmt
         oSTD <- Standards %>% filter(Methods %in% current_Method) %>% select(Order) %>% pull()
         
-        # Kriteruim für Zuordnung ist die kleinste Differenz zu den Standardmassen
-        # Suche nach minimalstem Massenabstand
-        
-        #### NOCH IN ARBEIT
-        return()
-        #######
-        
-        toAssign <- Standards %>% filter(Methods %in% current_Method) %>% filter(Order %in% oSTD[j]) %>% select(Analytes) %>% pull()
+        if (length(oSTD) > 0) {
+          j <- which.min(abs(as.numeric(oSTD) - as.numeric(Analytes[i,"Order"])))
+          toAssign <- Standards %>% filter(Methods %in% current_Method) %>% filter(Order %in% oSTD[j]) %>% select(Analytes) %>% pull()
+        } else {
+          toAssign <- Standards[["Analytes"]][1]
+        }
         
         if(i == 1){
           assigned <- c(toAssign)

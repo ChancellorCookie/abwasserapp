@@ -10,15 +10,34 @@ readCSV_iCAPQ_short <- function(inFile = tk_choose.files(filters = matrix( c("CS
   require("dplyr")
   require("tidyr")
   
-  data_Raw <- read.csv(file = inFile,  # OpenFileDialog
-                       
-                       header = FALSE, # kein Header
-                       sep = ",",      # Zellen mit Kommata getrennt
-                       fill = TRUE,
-                       na.strings = na.strings,
-                       blank.lines.skip = TRUE,
-                       stringsAsFactors = FALSE
-                       );
+  data_Raw <- tryCatch({
+    read.csv(file = inFile,
+             header = FALSE,
+             sep = ",",
+             fill = TRUE,
+             na.strings = na.strings,
+             blank.lines.skip = TRUE,
+             stringsAsFactors = FALSE)
+  }, error = function(e) {
+    if (grepl("multibyte|invalid.*string|encoding", e$message, ignore.case = TRUE)) {
+      tryCatch({
+        read.csv(file = inFile,
+                 header = FALSE,
+                 sep = ",",
+                 fill = TRUE,
+                 na.strings = na.strings,
+                 blank.lines.skip = TRUE,
+                 stringsAsFactors = FALSE,
+                 fileEncoding = "UTF-16LE")
+      }, error = function(e2) {
+        stop(paste("Cannot read file. File may not be a valid CSV or uses an unsupported encoding.\n",
+                   "Original error: ", e$message, "\n",
+                   "UTF-16 fallback error: ", e2$message))
+      })
+    } else {
+      stop(e)
+    }
+  })
   
   
   store.Raw <- data_Raw

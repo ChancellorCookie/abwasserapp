@@ -15,7 +15,7 @@ mySmplCaliAssign02 <- function(SampleDF,StdDef,ExtCal.which.Analytes,OutOfRange.
     # Bereinigte Standards, falls ein Standard NA ist
     # Std.clean <- SampleDF[StdIndex,j][!is.na(SampleDF[StdIndex,j])]
     Std.clean <- SampleDF[StdIndex,] %>% select(Index,j) %>% filter(complete.cases(.))
-    Std.clean <- Std.clean[order(Std.clean["Index"]),]
+    Std.clean <- Std.clean[order(Std.clean$Index),]
     
     # Wenn weniger als 3 Standards für die Auswertung vorhanden sind, werden alle Indizes auf NA gesetzt 
     # und die gesamte Auswertung dieses Analyten übersprungen

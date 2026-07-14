@@ -69,9 +69,7 @@ for (i in funcs) {
 #removes temporary *.cpt files in rmd-File containing directory
 myTempFileRemove(path.root,FilePattern = ".cpt") 
 
-# Für Debug die kommentierten Zeilen tauschen
-#myList <- params$myList
-load("/srv/shiny-server/myShinyApps/R_Viewer/151myListDebug.RData")
+myList <- params$myList
 
 
 ## Einschränkung für Spaltenanzahl der Tabellen im Report
@@ -90,15 +88,19 @@ sowie zusätzlich eine Excel-Datei mit den Zwischenberechnungen (Dateiendung "_r
 ```{r Ausgabe der Daten, results='asis', echo=FALSE}
 
 # Function to track relevant Analytes in a sapply loop
-relevantIndex <- as.logical(
-  rowSums(
-    sapply(myList$Input.Parameter$Masse, function(i){
-      grepl(i,myList$Calibration$Info$Analytes)}))) 
-# If no Masses were defined in myList$Input.Parameter, all Analytes pass are set as relevantIndex
-
-relevantAnalytes <- myList$Calibration$Info$Analytes[relevantIndex]
-relevantElements <- myList$Calibration$Info$Elements[relevantIndex]
-relevantUnits <- myList$Calibration$Info$Units[relevantIndex]
+if (length(myList$Input.Parameter$Masse) == 0 || all(is.na(myList$Input.Parameter$Masse)) || all(myList$Input.Parameter$Masse == "")) {
+  relevantAnalytes <- myList$Calibration$Info$Analytes
+  relevantElements <- myList$Calibration$Info$Elements
+  relevantUnits <- myList$Calibration$Info$Units
+} else {
+  relevantIndex <- as.logical(
+    rowSums(
+      sapply(myList$Input.Parameter$Masse, function(i){
+        grepl(i,myList$Calibration$Info$Analytes)}))) 
+  relevantAnalytes <- myList$Calibration$Info$Analytes[relevantIndex]
+  relevantElements <- myList$Calibration$Info$Elements[relevantIndex]
+  relevantUnits <- myList$Calibration$Info$Units[relevantIndex]
+}
 
 Analyte <- paste0(relevantElements," (",relevantUnits,")")
 
